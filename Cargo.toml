@@ -1,0 +1,20 @@
+[package]
+name = "anytime-universe"
+version = "0.1.0"
+edition = "2024"
+authors = ["wavesong"]
+license = "BSD-3-Clause"
+default-run = "anytime-universe"
+
+[[bin]]
+name = "anytime-universe"
+path = "src/main.rs"
+
+[dependencies]
+wgpu     = "29"
+pollster = "0.4"
+bytemuck = "1"
+winit    = "0.30"
+egui = "0.34"
+egui-wgpu = "0.34"
+egui-winit = "0.34"

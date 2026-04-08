@@ -1,0 +1,84 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+
+  build:
+    needs: create-release
+    name: Build on ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: target/x86_64-unknown-linux-gnu/release/anytimeuniverse
+            asset_name: anytimeuniverse-linux-x86_64
+          - name: Linux ARM64
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_name: target/aarch64-unknown-linux-gnu/release/anytimeuniverse
+            asset_name: anytimeuniverse-linux-arm64
+          - name: Windows x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: target/x86_64-pc-windows-msvc/release/anytimeuniverse.exe
+            asset_name: anytimeuniverse-windows-x86_64.exe
+          - name: Windows ARM64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            artifact_name: target/aarch64-pc-windows-msvc/release/anytimeuniverse.exe
+            asset_name: anytimeuniverse-windows-arm64.exe
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: target/aarch64-apple-darwin/release/anytimeuniverse
+            asset_name: anytimeuniverse-macos-arm64.tar.gz
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Update Rust
+        run: rustup update stable
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install Linux Dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y pkg-config cmake libasound2-dev
+
+      - name: Build Release
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: tar -czf ${{ matrix.asset_name }} -C $(dirname ${{ matrix.artifact_name }}) $(basename ${{ matrix.artifact_name }})
+
+      - name: Rename (Linux)
+        if: runner.os == 'Linux'
+        run: mv ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+
+      - name: Rename (Windows)
+        if: runner.os == 'Windows'
+        run: move ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset_name }}

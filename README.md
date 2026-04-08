@@ -4,6 +4,8 @@ A cross-platform simulation in Rust where time is the direct input. Step to any 
 
 Three wave branches run against that field. Each accumulates energy, copies parameters forward with drift, or phases in and out. You can watch the visualization forward, rewind, or jump to any moment.
 
+![screenshot](https://github.com/nguvan777-0/anytimeuniverse/releases/download/screenshots/anytimeuniverse-TKQg7X9w-98154817436855255040_0.png)
+
 ![screenshot](https://github.com/nguvan777-0/anytimeuniverse/releases/download/screenshots/anytimeuniverse-BrJF2t2t-590112_2.png)
 
 ```bash
@@ -12,6 +14,14 @@ cargo run -- --ascii             # CLI: Interactive 24-bit terminal renderer
 cargo run -- --tape              # Tape: scrolling data log
 cargo run -- --help              # full options
 ```
+
+## Download compiled binary
+
+Pre-built binaries are on the [releases page](https://github.com/nguvan777-0/anytimeuniverse/releases).
+
+- **macOS Apple Silicon** — download the `.tar.gz`, extract, and run
+- **Linux** — download, `chmod +x`, and run
+- **Windows** — download and run the `.exe`
 
 ---
 
@@ -42,10 +52,6 @@ $$\text{carry}(i,n) = \frac{1}{2}\,\text{hash}(i,n,c{+}10) + \frac{1}{2}\,\text{
 High-energy generations carry more of their parameters forward. This is selection without a selector — it falls out of the blend formula.
 
 ---
-
-## How it works
-
-Each wave has a set of parameters, an energy budget and a fork — a branch that splits off at a hash-determined generation and runs its own energy trajectory from that point.
 
 ## Parameters from the hash
 
@@ -152,7 +158,7 @@ The CPU computes all non-positional values—hash lookups, blends, and energy—
 
 Simulation parameters are passed to the renderer directly on the main thread, while a separate audio thread (`synth_engine.rs`) drives the additive synthesizer. The sound reflects the live physics: as parameters drift across generations, the timbre changes in sync.
 
-## Vocabulary
+## Terms
 
 | term | meaning |
 |---|---|
@@ -167,3 +173,4 @@ Simulation parameters are passed to the renderer directly on the main thread, wh
 ## License
 
 BSD 3-Clause
+

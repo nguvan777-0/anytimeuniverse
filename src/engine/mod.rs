@@ -1,6 +1,4 @@
 pub mod color_math;
 pub mod sim;
-mod world;
-
-pub use world::{CHANNELS, World};
+pub mod wave_cache;
 mod triple_buffer;

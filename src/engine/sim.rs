@@ -7,11 +7,11 @@ use super::triple_buffer::TripleBuffer;
 
 // ── Public types (kept compatible with window.rs) ────────────────────────────
 
-/// CPU representation of the PCA projection axes — kept for API compatibility.
+/// CPU representation of the branch projection axes — kept for API compatibility.
 #[derive(Clone, Copy)]
-pub struct PcaAxesData {
-    pub pc1:   [f32; 14],
-    pub pc2:   [f32; 14],
+pub struct BranchProjectionData {
+    pub axis1: [f32; 14],
+    pub axis2: [f32; 14],
     pub mean:  [f32; 14],
     pub min_x: f32,
     pub max_x: f32,
@@ -21,31 +21,23 @@ pub struct PcaAxesData {
 }
 
 #[derive(Clone)]
+#[derive(Default)]
 pub struct Stats {
     pub tick: u32,
-    /// Empty in analytical wave mode — reserved for future creature census.
+    /// Unused — kept for API compatibility.
     pub color_counts: Vec<u32>,
-    /// None in analytical wave mode.
-    pub pca_density: Option<Vec<u32>>,
+    /// Unused — kept for API compatibility.
+    pub branch_density: Option<Vec<u32>>,
 }
 
-impl Default for Stats {
-    fn default() -> Self {
-        Self {
-            tick: 0,
-            color_counts: Vec::new(),
-            pca_density: None,
-        }
-    }
-}
 
 pub enum Command {
     SetSpeed(Duration),
     Pause,
     Resume,
-    Reset(Vec<f32>, f32),
+    Reset,
     /// No-op in analytical mode — kept for window.rs API compatibility.
-    SetPcaAxes(PcaAxesData),
+    SetBranchProjection(Box<BranchProjectionData>),
 }
 
 pub struct SimHandle {
@@ -58,16 +50,14 @@ pub struct SimHandle {
 
 /// Spawns a lightweight stats thread.  No GPU compute — all visuals are
 /// generated analytically in the fragment shader using wave_time T.
-pub fn spawn_sim(
-    proxy: winit::event_loop::EventLoopProxy<()>,
-) -> SimHandle {
+pub fn spawn_sim() -> SimHandle {
     let stats_buffer = TripleBuffer::new();
     let ui_requested_frame = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let stats_buf_clone = stats_buffer.clone();
     let (cmd_tx, cmd_rx) = channel();
 
     thread::spawn(move || {
-        run_sim(cmd_rx, stats_buf_clone, proxy);
+        run_sim(cmd_rx, stats_buf_clone);
     });
 
     SimHandle { stats_buffer, ui_requested_frame, cmd_tx }
@@ -78,7 +68,6 @@ pub fn spawn_sim(
 fn run_sim(
     cmd_rx: Receiver<Command>,
     stats_buffer: Arc<TripleBuffer<Stats>>,
-    proxy: winit::event_loop::EventLoopProxy<()>,
 ) {
     let mut tick = 0u32;
     let mut is_paused = false;
@@ -94,8 +83,8 @@ fn run_sim(
                 Ok(Command::SetSpeed(s)) => _speed_limit = s,
                 Ok(Command::Pause)       => is_paused = true,
                 Ok(Command::Resume)      => is_paused = false,
-                Ok(Command::Reset(_, _)) => { tick = 0; }
-                Ok(Command::SetPcaAxes(_)) => {} // no-op
+                Ok(Command::Reset) => { tick = 0; }
+                Ok(Command::SetBranchProjection(_)) => {} // no-op
                 Err(TryRecvError::Empty)        => break,
                 Err(TryRecvError::Disconnected) => return,
             }
@@ -114,11 +103,11 @@ fn run_sim(
             {
                 let stat = stats_buffer.write();
                 stat.tick = tick;
-                // color_counts / pca_density intentionally empty —
-                // creature census can be added here analytically later.
+                // color_counts / branch_density left empty.
                 stats_buffer.publish();
             }
-            let _ = proxy.send_event(());
+            // No proxy.send_event() — the render loop is self-contained.
+            // T is advanced in the frame loop; no heartbeat needed from here.
         }
 
         // Sleep a fixed 1 ms to avoid CPU spinning; the render rate is

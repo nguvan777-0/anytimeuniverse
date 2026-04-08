@@ -1,11 +1,10 @@
 //! Future theme
 
 use egui::{
-    Color32, Stroke, Rounding, Margin, Vec2, Context, Visuals, Rect, Painter,
+    Color32, Stroke, CornerRadius, Margin, Vec2, Context, Visuals, Rect, Painter,
     Response, Ui, FontId, Sense, pos2, vec2,
 };
 use crate::ui::ResponseExt;
-use crate::ui::dew;
 // ── Future palette ────────────────────────────────────────────────────────────
 // Backgrounds
 const BG:             Color32 = Color32::from_rgb( 14,  15,  21); // near-black gunmetal
@@ -36,7 +35,7 @@ pub fn apply_theme(ctx: &Context) {
     visuals.override_text_color = Some(TEXT);
     visuals.text_cursor.stroke.color = TEXT;
 
-    let r = Rounding::same(5);
+    let r = CornerRadius::same(5);
     let border = Stroke::new(1.0, INSET_BORDER);
     let fg     = Stroke::new(1.0, TEXT);
 
@@ -72,8 +71,8 @@ pub fn apply_theme(ctx: &Context) {
     visuals.selection.bg_fill = FUTURE_GLOW;
     visuals.selection.stroke  = Stroke::new(1.0, Color32::BLACK);
 
-    visuals.window_corner_radius = Rounding::same(6);
-    visuals.menu_corner_radius   = Rounding::same(6);
+    visuals.window_corner_radius = CornerRadius::same(6);
+    visuals.menu_corner_radius   = CornerRadius::same(6);
 
     style.visuals = visuals;
     style.interaction.selectable_labels = false;
@@ -83,7 +82,7 @@ pub fn apply_theme(ctx: &Context) {
     style.spacing.slider_width      = 150.0;
     style.spacing.interact_size.y   = 20.0;
 
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 
 // ── Background pattern ────────────────────────────────────────────────────────
@@ -250,12 +249,12 @@ pub fn draw_future_pill(ui: &mut Ui, response: &Response, rect: Rect) -> f32 {
 // ── Section label ─────────────────────────────────────────────────────────────
 
 /// Etched future section label — silver text with a subtle 1px shadow below.
-pub fn collapsible_header(ui: &mut Ui, title: &str, is_expanded: bool) -> bool {
+pub fn collapsible_header(ui: &mut Ui, title: &str, _is_expanded: bool) -> bool {
     let mut clicked = false;
     ui.horizontal(|ui| {
         let btn_resp = section_toggle_btn(ui);
         let lbl_text = title;
-        let lbl_resp = section_label(ui, &lbl_text);
+        let lbl_resp = section_label(ui, lbl_text);
 
         if btn_resp.clicked() || lbl_resp.clicked() { clicked = true; }
     });
@@ -302,7 +301,7 @@ pub fn draw_orb_btn(
     let press_t = ui.ctx().animate_value_with_time(
         resp.id.with("press"), if pressed { 1.0 } else { 0.0 }, 0.05,
     );
-    let hover_t = group_hover_t.unwrap_or_else(|| {
+    let _hover_t = group_hover_t.unwrap_or_else(|| {
         ui.ctx().animate_value_with_time(
             resp.id.with("hover"), if resp.hovered() { 1.0 } else { 0.0 }, 0.1,
         )
@@ -372,7 +371,7 @@ pub fn draw_orb_btn(
 /// Small future orb used as a section collapse / expand toggle.
 pub fn section_toggle_btn(ui: &mut Ui) -> Response {
     let r = 6.0f32;
-    let (rect, mut resp) = ui.allocate_exact_size(vec2(r * 2.0 + 2.0, r * 2.0 + 2.0), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(vec2(r * 2.0 + 2.0, r * 2.0 + 2.0), Sense::click());
     if !ui.is_rect_visible(rect) { return resp; }
 
     draw_orb_btn(ui, &resp, r, FUTURE_BODY, ".", None);
@@ -422,7 +421,7 @@ pub fn button_w(ui: &mut Ui, text: &str, min_w: f32) -> Response {
 
 pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
     let galley = ui.painter().layout_no_wrap(
-        text.to_string(), FontId::monospace(16.0), Color32::BLACK,
+        text.to_string(), FontId::monospace(24.0), Color32::BLACK,
     );
     let padding = vec2(5.0, 2.0);
     let size = galley.size() + padding * 2.0;
@@ -434,7 +433,7 @@ pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
         let shadow_a = (110.0 * (1.0 - shift_y / 1.5)) as u8;
         if shadow_a > 0 {
             ui.painter().galley(text_pos + vec2(0.0, 1.0),
-                ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0),
+                ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(24.0),
                     Color32::WHITE),
                 Color32::BLACK);
         }
@@ -443,8 +442,8 @@ pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
     response.hand()
 }
 
-pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32) -> Response {
-    let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), Color32::BLACK);
+pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> Response {
+    let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::BLACK);
     let gw = measure.size().x;
     let gh = measure.size().y;
     let side = min_side.max(gw + 6.0);
@@ -457,7 +456,7 @@ pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32) -> Response {
         if shadow_a > 0 {
             ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
                 pos: pos + vec2(0.0, 1.0),
-                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), Color32::WHITE),
+                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::WHITE),
                 underline: egui::Stroke::NONE,
                 fallback_color: Color32::WHITE,
                 override_text_color: Some(Color32::WHITE),
@@ -466,8 +465,8 @@ pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32) -> Response {
             }));
         }
         ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
-            pos: pos,
-            galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), Color32::BLACK),
+            pos,
+            galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::BLACK),
             underline: egui::Stroke::NONE,
             fallback_color: Color32::BLACK,
             override_text_color: Some(Color32::BLACK),
@@ -478,8 +477,8 @@ pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32) -> Response {
     response.hand()
 }
 
-pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32) -> Response {
-    let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), Color32::BLACK);
+pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32, font_size: f32) -> Response {
+    let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::BLACK);
     let gw = measure.size().x;
     let gh = measure.size().y;
     let side = min_side.max(gw + 6.0);
@@ -493,7 +492,7 @@ pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32)
         if shadow_a > 0 {
             ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
                 pos: pos + vec2(0.0, 1.0),
-                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), Color32::WHITE),
+                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(24.0), Color32::WHITE),
                 underline: egui::Stroke::NONE,
                 fallback_color: Color32::WHITE,
                 override_text_color: Some(Color32::WHITE),
@@ -502,8 +501,8 @@ pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32)
             }));
         }
         ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
-            pos: pos,
-            galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), Color32::BLACK),
+            pos,
+            galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(24.0), Color32::BLACK),
             underline: egui::Stroke::NONE,
             fallback_color: Color32::BLACK,
             override_text_color: Some(Color32::BLACK),
@@ -525,8 +524,8 @@ impl crate::ui::theme::ThemeProvider for Future {
     fn apply_theme(&self, ctx: &Context) { apply_theme(ctx); }
     fn draw_sunken(&self, painter: &Painter, rect: Rect) { draw_inset(painter, rect); }
     fn section_toggle_btn(&self, ui: &mut Ui) -> Response { section_toggle_btn(ui) }
-    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32) -> Response { key_cap_small(ui, text, side) }
-    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32) -> Response { key_cap_small_rotated(ui, text, angle, side) }
+    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32) -> Response { key_cap_small(ui, text, side, font_size) }
+    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32) -> Response { key_cap_small_rotated(ui, text, angle, side, font_size) }
     fn collapsible_header(&self, ui: &mut Ui, text: &str, is_open: bool) -> bool { crate::ui::widgets::collapsible_header(self, ui, text, is_open) }
     fn paint_slider_track(&self, ui: &mut Ui, track_rect: Rect, center_x: f32) {
         let p = ui.painter();
@@ -621,7 +620,7 @@ impl crate::ui::theme::ThemeProvider for Future {
 
     fn paint_slider_text(&self, ui: &mut Ui, text: &str) {
         if !text.is_empty() {
-            egui::Frame::none().fill(PANEL).show(ui, |ui| {
+            egui::Frame::NONE.fill(PANEL).show(ui, |ui| {
                 ui.vertical(|ui| {
                     ui.style_mut().spacing.item_spacing.y = 0.0;
                     let mut first = true;
@@ -639,6 +638,31 @@ impl crate::ui::theme::ThemeProvider for Future {
         }
     }
     fn section_label(&self, ui: &mut Ui, text: &str) -> Response { section_label(ui, text) }
+
+    fn paint_slider_gauge(&self, ui: &mut Ui, bg_rect: Rect, fill_rect: Rect, is_down: bool, is_hovered: bool) {
+        let p = ui.painter();
+        p.rect_filled(bg_rect, 2.0, Color32::from_rgb(4, 5, 8)); // Matches future track background
+        
+        if fill_rect.width() > 0.0 {
+            let darken = if is_down { 0.7 } else if is_hovered { 1.2 } else { 1.0 };
+            let c = FUTURE_GLOW;
+            let c_r = (c.r() as f32 * darken).clamp(0.0, 255.0) as u8;
+            let c_g = (c.g() as f32 * darken).clamp(0.0, 255.0) as u8;
+            let c_b = (c.b() as f32 * darken).clamp(0.0, 255.0) as u8;
+            let active = Color32::from_rgb(c_r, c_g, c_b);
+
+            p.rect_filled(fill_rect, 2.0, active);
+            
+            // Specular metallic highlight
+            let hl_op = if is_down { 30 } else { 60 };
+            let hl_rect = Rect::from_min_size(
+                fill_rect.min + egui::vec2(0.0, 1.0),
+                egui::vec2(fill_rect.width(), fill_rect.height() * 0.4),
+            );
+            p.rect_filled(hl_rect, 2.0,
+                Color32::from_rgba_premultiplied(255, 255, 255, hl_op));
+        }
+    }
     fn text_field_edit(&self, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response {
         let field_w = ui.available_width();
         let padding = egui::vec2(6.0, 3.0);
@@ -647,14 +671,14 @@ impl crate::ui::theme::ThemeProvider for Future {
         if ui.is_rect_visible(rect) {
             let p = ui.painter();
             // Solid background to hide grid for this text area
-            p.rect_filled(rect, Rounding::same(3), INSET_FILL);
+            p.rect_filled(rect, CornerRadius::same(3), INSET_FILL);
             draw_inset(p, rect);
         }
         let inner_rect = egui::Rect::from_center_size(
             rect.center(),
             egui::vec2(rect.width() - 8.0, font_size + padding.y * 2.0 + 2.0),
         );
-        let mut child = ui.child_ui(inner_rect, *ui.layout(), None);
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner_rect).layout(*ui.layout()));
         child.visuals_mut().selection.bg_fill = FUTURE_GLOW;
         child.visuals_mut().selection.stroke = Stroke::new(1.0, Color32::BLACK);
 
@@ -669,6 +693,14 @@ impl crate::ui::theme::ThemeProvider for Future {
 
     fn button_text_color(&self) -> egui::Color32 {
         egui::Color32::BLACK
+    }
+
+    fn gauge_label_shadow(&self) -> Option<egui::Color32> {
+        Some(egui::Color32::from_black_alpha(220))
+    }
+
+    fn gauge_label_text_color(&self) -> Option<egui::Color32> {
+        Some(egui::Color32::WHITE)
     }
 
     fn paint_button(&self, ui: &mut egui::Ui, rect: egui::Rect, is_down: bool, is_hovered: bool) -> f32 {
@@ -750,5 +782,9 @@ impl crate::ui::theme::ThemeProvider for Future {
             p.rect_stroke(rect, r, Stroke::new(1.0,
                 Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
         }
+    }
+
+    fn chart_bg(&self) -> egui::Color32 {
+        egui::Color32::from_rgb(8, 8, 12)
     }
 }

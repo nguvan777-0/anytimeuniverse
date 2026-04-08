@@ -1,26 +1,51 @@
 const PI:  f32 = 3.14159265;
-const PHI: f32 = 1.6180339887;
-const EUL: f32 = 2.7182818284;
-const TAU: f32 = 6.2831853071;
+const PHI: f32 = 1.61803399;
+const TAU: f32 = 6.28318531;
 
-struct SimUniform { tick: f32, noise: f32, _pad1: f32, _pad2: f32 }
+struct SimUniform { 
+    tick: f32, 
+    noise: f32, 
+    t_epoch: f32, 
+    pan_x: f32, 
+    pan_y: f32, 
+    _pad1: f32, 
+    _pad2: f32, 
+    _pad3: f32 
+}
 @group(0) @binding(0) var<uniform> sim: SimUniform;
 
-struct EnvWave {
-    amp:         f32,
-    freq:        f32,
-    phase:       f32,
-    dir_x:       f32,
-    dir_y:       f32,
-    drift_freq:  f32,
-    drift_phase: f32,
-    _p2:         f32,
-}
-struct EnvUniform { waves: array<EnvWave, 3> }
-@group(0) @binding(1) var<uniform> env: EnvUniform;
+// binding 1 (env_buf) is kept in the bind group for backward compatibility
+// but no longer read by this shader — all env math moved to wave_cache on CPU.
 
 struct WaveColors { c: array<vec4<f32>, 3> }
 @group(0) @binding(2) var<uniform> wave_colors: WaveColors;
+
+// ── Wave Cache (binding 3) ────────────────────────────────────────────────────
+// Pre-baked per-frame results of fhash / memory / gen_acc / wave_energy /
+// wave_center / wave_velocity / fork_center.
+// Computed once on the CPU in engine/wave_cache.rs, uploaded before the field
+// pass.  This reduces per-pixel trig from ~1 200 calls to ~30.
+// Indices 0–2 = main waves, 3–5 = their forks.
+struct WaveData {
+    amp:       f32,   // effective amplitude (kinetic pulse applied; forks ×FORK_WEIGHT)
+    freq:      f32,   // final frequency
+    dir_x:     f32,   // cos(angle_t)
+    dir_y:     f32,   // sin(angle_t)
+    shape:     f32,   // sine / abs-sine blend weight
+    warp:      f32,   // spatial warp multiplier
+    cx:        f32,   // Gaussian envelope centre x
+    cy:        f32,   // Gaussian envelope centre y
+    cos_v:     f32,   // cos(velocity angle) for ellipsoid rotation
+    sin_v:     f32,   // sin(velocity angle)
+    stretch:   f32,   // 1 + speed×0.5
+    radius:    f32,   // Gaussian envelope radius
+    phase_off: f32,   // precomputed −freq×t + origin_phase
+    origin_ph: f32,   // origin wave phase (for fork spatial warp)
+    alive:     f32,   // 1.0 = alive, 0.0 = inactive (fork not yet split)
+    base_amp:  f32,   // env.waves[origin].amp for per-branch colour ratio
+}
+struct WaveCache { waves: array<WaveData, 6> }
+@group(0) @binding(3) var<uniform> wc: WaveCache;
 
 struct VOut {
     @builtin(position) pos: vec4<f32>,
@@ -43,282 +68,122 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
     return out;
 }
 
-// ── Hash ─────────────────────────────────────────────────────────────────────
-fn uhash(x: u32) -> u32 {
-    var v = x ^ (x >> 17u);
-    v  = v * 0xbf324c81u;
-    v ^= v >> 13u;
-    v  = v * 0x9a813f77u;
-    v ^= v >> 16u;
-    return v;
-}
+// ── Wave sample ───────────────────────────────────────────────────────────────
+// sin_term = amp × sin(phase_arg)         — field contribution
+// cos_freq = amp × freq × cos(phase_arg)  — derivative kernel:
+//   dfield/dT  = −∑(cos_freq)
+//   dfield/dx  =  ∑(cos_freq × dir.x)
+//   dfield/dy  =  ∑(cos_freq × dir.y)
+struct WaveSample { sin_term: f32, cos_freq: f32, dir: vec2<f32>, freq: f32 }
 
-fn gen_param(wave_i: u32, gn: u32, ch: u32) -> f32 {
-    return f32(uhash(wave_i * 97u + gn * 1031u + ch * 7u)) / 4294967295.0;
-}
-
-// ── Hardware bit count (Population Count) ────────────────────────────────────
-fn gen_bits(wave_i: u32, gn: u32) -> f32 {
-    let h = uhash(wave_i * 97u + gn * 1031u + 8u * 7u); // Channel 8 reserved for raw genome
-    return f32(countOneBits(h));
-}
-
-// ── Energy ───────────────────────────────────────────────────────────────────
-// cumulative power across all generations up to gn, in O(1).
-// power per generation = amp × freq × 0.4 — instantaneous output.
-// energy = Σ(power - threshold) — positive means active, negative means zeroed.
-// uses closed-form cosine sum (Dirichlet kernel) — no loop needed.
-const ENERGY_THRESHOLD: f32 = 0.51;
-fn wave_energy(wave_i: u32, gn: u32) -> f32 {
-    // alpha irrational → cos_sum never repeats
-    // beta uses PHI offset per branch → each branch has a unique trajectory
-    let alpha   = 2.0 * PHI;
-    let beta    = f32(wave_i) * PHI * PI;
-    let N       = f32(gn);
-    let cos_sum = sin((N + 1.0) * alpha * 0.5) * cos(N * alpha * 0.5 + beta) / sin(alpha * 0.5);
-    // +1.0 starting budget: all branches start active (energy ≥ 0.49 at gn=0).
-    // drift = -0.01/gn; cos_sum bounded ≈ ±1; zeroed permanently after ~100 generations.
-    return 1.0 + (N + 1.0) * (0.5 - ENERGY_THRESHOLD) - 0.5 * cos_sum;
-}
-
-// ── Memory ───────────────────────────────────────────────────────────────────
-// parameters at generation N are a weighted blend of hash(N) and hash(N-1) — copying.
-// carry weight = mix(random, power) — high-power generations copy more of the previous generation.
-// high power → high carry → stable, keeps what worked.
-// low power  → low carry  → drifts further from the previous generation.
-fn memory(wave_i: u32, gn: u32, ch: u32) -> f32 {
-    let own  = gen_param(wave_i, gn,      ch);
-    let past = gen_param(wave_i, gn - 1u, ch);
-
-    // power: amp × freq × 0.4 — instantaneous output of this generation.
-    let amp_n  = 0.3 + gen_param(wave_i, gn, 0u) * 2.4;
-    let freq_n = 0.4 + gen_param(wave_i, gn, 1u) * 1.2;
-
-    // bit complexity (popcnt) — favors sequences near 16 set bits (50%)
-    let bits = gen_bits(wave_i, gn);
-    let complexity_bonus = 1.0 - (abs(bits - 16.0) / 16.0);
-
-    let power = clamp(amp_n * freq_n * 0.4 * (0.5 + 0.5 * complexity_bonus), 0.0, 1.0);
-
-    let carry = mix(gen_param(wave_i, gn, ch + 10u), power, 0.5);
-    return mix(own, past, carry);
-}
-
-// ── Accumulator ──────────────────────────────────────────────────────────────
-fn gen_acc(drift_freq: f32, drift_phase: f32, t: f32, noise: f32) -> f32 {
-    let base   = t * drift_freq * 2.0;
-    let wiggle = noise * 0.5 * (
-        sin(drift_freq * PHI * t + drift_phase) +
-        sin(drift_freq * PI  * t + drift_phase * EUL)
-    );
-    return max(base + wiggle, 0.0);
-}
-
-// ── Math VM (Structural Genetics) ────────────────────────────────────────────
-fn evaluate_dna_ops(dna: u32, phase_arg: f32, pos: vec2<f32>, freq: f32) -> f32 {
-    let op_wave_shape = dna & 3u;
-    let op_space_warp = (dna >> 2u) & 3u;
-    let op_invert     = (dna >> 4u) & 1u;
-
-    // 1. Shape Evaluation (Branchless)
-    let is_sh_0 = f32(op_wave_shape == 0u);
-    let is_sh_1 = f32(op_wave_shape == 1u);
-    let is_sh_2 = f32(op_wave_shape == 2u);
-    let is_sh_3 = f32(op_wave_shape == 3u);
-
-    let sh_0 = sin(phase_arg);
-    let sh_1 = abs(sin(phase_arg)) * 2.0 - 1.0;
-    let sh_2 = fract(phase_arg / TAU) * 2.0 - 1.0;
-    let sh_3 = smoothstep(-1.0, 1.0, sin(phase_arg)) * 2.0 - 1.0;
-
-    var wave_val = sh_0 * is_sh_0 
-                 + sh_1 * is_sh_1 
-                 + sh_2 * is_sh_2 
-                 + sh_3 * is_sh_3;
-
-    // 2. Spatial Warp (Branchless)
-    let is_w_0 = f32(op_space_warp == 0u);
-    let is_w_1 = f32(op_space_warp == 1u);
-    let is_w_2 = f32(op_space_warp == 2u);
-    let is_w_3 = f32(op_space_warp == 3u);
-
-    // Some visually interesting multipliers to warp the sine-field
-    let w_1 = cos(pos.x * 2.0);
-    let w_2 = sin(pos.y * 2.0);
-    let w_3 = sin(length(pos) * 5.0);
-
-    wave_val *= is_w_0 * 1.0 
-              + is_w_1 * w_1 
-              + is_w_2 * w_2 
-              + is_w_3 * w_3;
-
-    // 3. Inversion
-    if op_invert == 1u {
-        wave_val = -wave_val;
-    }
-
-    return wave_val;
-}
-
-// ── Fork ─────────────────────────────────────────────────────────────────────
-// Each branch forks once — splitting off at a hash-determined generation.
-// The fork inherits the origin branch's parameters at the split point, blended with its own hash.
-// The fork runs its own energy trajectory from the split point.
-// All O(1): fork generation is a hash, not a simulation result.
-const FORK_MUTATION: f32 = 0.35; // how far the fork drifts from the origin branch (0=clone, 1=random)
-const FORK_WEIGHT:   f32 = 0.6;  // fork contribution relative to origin branch
-
-fn fork_split_at(fork_i: u32) -> u32 {
-    // generation at which the fork splits off — unique per fork, range [5, 85)
-    return u32(gen_param(fork_i, 0u, 20u) * 80.0) + 5u;
-}
-
-fn sample_fork(origin: EnvWave, origin_i: u32, fork_i: u32, pos: vec2<f32>, t: f32, noise: f32) -> WaveSample {
+// Per-pixel work for a main wave: ~4 trig + 1 exp (vs ~200 trig before).
+fn sample_wave(i: u32, pos: vec2<f32>, t: f32) -> WaveSample {
+    let w   = wc.waves[i];
     var out: WaveSample;
     out.sin_term = 0.0; out.cos_freq = 0.0;
-    out.dir = vec2(1.0, 0.0); out.freq = 1.0;
+    out.dir = vec2(w.dir_x, w.dir_y); out.freq = w.freq;
+    if w.alive < 0.5 { return out; }
 
-    let acc       = gen_acc(origin.drift_freq, origin.drift_phase, t, noise);
-    let origin_gn = u32(floor(acc));
-    let gn_fork   = fork_split_at(fork_i);
-    if origin_gn < gn_fork { return out; }  // not forked yet
+    let dir       = vec2(w.dir_x, w.dir_y);
+    let phase_arg = w.freq * dot(dir, pos) + w.phase_off;
+    let s         = sin(phase_arg);
+    let osc       = mix(s, abs(s) * 2.0 - 1.0, w.shape);
+    // Shimmer: surface texture — 2 trig per wave, genuinely pos-dependent.
+    let shimmer   = cos(pos.x * 2.0 + t) * sin(pos.y * 1.5 - t * 0.5);
+    let wave_val  = 1.0 + 0.3 * osc + w.warp * 0.2 * shimmer;
 
-    let fork_age  = origin_gn - gn_fork;
-    let fork_id = fork_i + 10u;           // offset to avoid colliding with origin branch hash space
-    let here    = select(0.0, 1.0, wave_energy(fork_id, fork_age) > 0.0);
-    if here == 0.0 { return out; }
+    let rel    = pos - vec2(w.cx, w.cy);
+    let p_long =  rel.x * w.cos_v + rel.y * w.sin_v;
+    let p_lat  = -rel.x * w.sin_v + rel.y * w.cos_v;
+    let d_sq   = (p_long * p_long) / (w.stretch * w.stretch)
+               + (p_lat  * p_lat)  * (w.stretch * w.stretch);
+    let env    = exp(-d_sq / (w.radius * w.radius));
 
-    let frac = fract(acc);
-
-    // parameters: mix of origin branch at split point and fork's own hash
-    // FORK_MUTATION controls how far the fork drifts from the origin branch
-    let amp_a  = origin.amp  * (0.3 + mix(memory(origin_i, gn_fork,       0u), gen_param(fork_id, fork_age,       0u), FORK_MUTATION) * 2.4);
-    let freq_a = origin.freq * (0.4 + mix(memory(origin_i, gn_fork,       1u), gen_param(fork_id, fork_age,       1u), FORK_MUTATION) * 1.2);
-    let ang_a  =                      mix(memory(origin_i, gn_fork,       2u), gen_param(fork_id, fork_age,       2u), FORK_MUTATION) * TAU;
-    let shp_a  =                      mix(memory(origin_i, gn_fork,       3u), gen_param(fork_id, fork_age,       3u), FORK_MUTATION);
-    let wrp_a  =                      mix(memory(origin_i, gn_fork,       4u), gen_param(fork_id, fork_age,       4u), FORK_MUTATION);
-
-    let amp_b  = origin.amp  * (0.3 + mix(memory(origin_i, gn_fork + 1u,  0u), gen_param(fork_id, fork_age + 1u,  0u), FORK_MUTATION) * 2.4);
-    let freq_b = origin.freq * (0.4 + mix(memory(origin_i, gn_fork + 1u,  1u), gen_param(fork_id, fork_age + 1u,  1u), FORK_MUTATION) * 1.2);
-    let ang_b  =                      mix(memory(origin_i, gn_fork + 1u,  2u), gen_param(fork_id, fork_age + 1u,  2u), FORK_MUTATION) * TAU;
-    let shp_b  =                      mix(memory(origin_i, gn_fork + 1u,  3u), gen_param(fork_id, fork_age + 1u,  3u), FORK_MUTATION);
-    let wrp_b  =                      mix(memory(origin_i, gn_fork + 1u,  4u), gen_param(fork_id, fork_age + 1u,  4u), FORK_MUTATION);
-
-    let blend     = smoothstep(0.9, 1.0, frac);
-    let amp_t     = mix(amp_a,  amp_b,  blend);
-    let freq_t    = mix(freq_a, freq_b, blend);
-    let angle_t   = mix(ang_a,  ang_b,  blend);
-    let shape_t   = mix(shp_a,  shp_b,  blend);
-    let warpx_t   = mix(wrp_a,  wrp_b,  blend);
-
-    let dir_t     = vec2(cos(angle_t), sin(angle_t));
-    let phase_arg = freq_t * dot(dir_t, pos) - freq_t * t + origin.phase;
-
-    // Direct mathematical morphing using float memory fields!
-    // Shape 0.0 -> smooth sine | Shape 1.0 -> absolute saw-like peaks
-    let osc      = mix(sin(phase_arg), abs(sin(phase_arg)) * 2.0 - 1.0, shape_t);
-    
-    // Spatial warp 0.0 -> uniform field | Space warp 1.0 -> lattice/pulse modulators
-    let modifier = mix(1.0, cos(pos.x * 2.0) * sin(length(pos) * 3.0), warpx_t);
-
-    let wave_val = osc * modifier;
-
-    out.sin_term = amp_t * wave_val * here * FORK_WEIGHT;
-    out.cos_freq = amp_t * freq_t * cos(phase_arg) * here * FORK_WEIGHT;
-    out.dir      = dir_t;
-    out.freq     = freq_t;
+    out.sin_term = w.amp * wave_val * env;
+    out.cos_freq = w.amp * w.freq * cos(phase_arg) * env;
+    out.dir      = dir;
+    out.freq     = w.freq;
     return out;
 }
 
-// ── Wave sample ───────────────────────────────────────────────────────────────
-// sin_term = amp * sin(phase_arg)        — field contribution
-// cos_freq = amp * freq * cos(phase_arg) — derivative kernel:
-//   dfield/dT  = -sum(cos_freq)
-//   dfield/dx  =  sum(cos_freq * dir.x)
-//   dfield/dy  =  sum(cos_freq * dir.y)
-struct WaveSample { sin_term: f32, cos_freq: f32, dir: vec2<f32>, freq: f32 }
-
-fn sample_wave(w: EnvWave, wave_i: u32, pos: vec2<f32>, t: f32, noise: f32) -> WaveSample {
-    let acc  = gen_acc(w.drift_freq, w.drift_phase, t, noise);
-    let gn   = u32(floor(acc));
-    let frac = fract(acc);
-
-    let amp_a   = w.amp  * (0.3 + memory(wave_i, gn,      0u) * 2.4);
-    let freq_a  = w.freq * (0.4 + memory(wave_i, gn,      1u) * 1.2);
-    let angle_a =                  memory(wave_i, gn,      2u) * TAU;
-    let shp_a   =                  memory(wave_i, gn,      3u);
-    let wrp_a   =                  memory(wave_i, gn,      4u);
-
-    let amp_b   = w.amp  * (0.3 + memory(wave_i, gn + 1u, 0u) * 2.4);
-    let freq_b  = w.freq * (0.4 + memory(wave_i, gn + 1u, 1u) * 1.2);
-    let angle_b =                  memory(wave_i, gn + 1u, 2u) * TAU;
-    let shp_b   =                  memory(wave_i, gn + 1u, 3u);
-    let wrp_b   =                  memory(wave_i, gn + 1u, 4u);
-
-    let blend   = smoothstep(0.9, 1.0, frac);
-    let amp_t   = mix(amp_a,   amp_b,   blend);
-    let freq_t  = mix(freq_a,  freq_b,  blend);
-    let angle_t = mix(angle_a, angle_b, blend);
-    let shape_t = mix(shp_a,   shp_b,   blend);
-    let warpx_t = mix(wrp_a,   wrp_b,   blend);
-
-    let dir_t     = vec2(cos(angle_t), sin(angle_t));
-    let phase_arg = freq_t * dot(dir_t, pos) - freq_t * t + w.phase;
-
-    let here   = select(0.0, 1.0, wave_energy(wave_i, gn) > 0.0);
-
-    let osc      = mix(sin(phase_arg), abs(sin(phase_arg)) * 2.0 - 1.0, shape_t);
-    let modifier = mix(1.0, cos(pos.x * 2.0) * sin(length(pos) * 3.0), warpx_t);
-
-    let wave_val = osc * modifier;
-
+// Per-pixel work for a fork: ~6 trig + 1 exp (vs ~200 trig before).
+fn sample_fork(i: u32, pos: vec2<f32>, t: f32) -> WaveSample {
+    let w   = wc.waves[3u + i];
     var out: WaveSample;
-    out.sin_term = amp_t * wave_val * here;
-    out.cos_freq = amp_t * freq_t * cos(phase_arg) * here;
-    out.dir      = dir_t;
-    out.freq     = freq_t;
+    out.sin_term = 0.0; out.cos_freq = 0.0;
+    out.dir = vec2(w.dir_x, w.dir_y); out.freq = w.freq;
+    if w.alive < 0.5 { return out; }
+
+    let dir = vec2(w.dir_x, w.dir_y);
+    // Spatial warp: 2 trig per fork, genuinely pos-dependent.
+    let warped_pos = pos + vec2(
+        sin(pos.y * 0.15 + w.origin_ph) * 2.5,
+        cos(pos.x * 0.15 - w.origin_ph) * 2.5,
+    );
+    let phase_arg = w.freq * dot(dir, warped_pos) + w.phase_off;
+    let s         = sin(phase_arg);
+    let osc       = mix(s, abs(s) * 2.0 - 1.0, w.shape);
+    // Fork texture: 2 trig per fork, genuinely pos-dependent.
+    let texture   = cos(pos.x * 1.5 + pos.y * 0.5) * sin(length(pos) * 2.0 + t);
+    let wave_val  = 1.0 + 0.3 * osc + w.warp * 0.2 * texture;
+
+    let rel    = pos - vec2(w.cx, w.cy);
+    let p_long =  rel.x * w.cos_v + rel.y * w.sin_v;
+    let p_lat  = -rel.x * w.sin_v + rel.y * w.cos_v;
+    let d_sq   = (p_long * p_long) / (w.stretch * w.stretch)
+               + (p_lat  * p_lat)  * (w.stretch * w.stretch);
+    let env    = exp(-d_sq / (w.radius * w.radius));
+
+    // FORK_WEIGHT (0.6) already baked into w.amp by wave_cache.rs.
+    out.sin_term = w.amp * wave_val * env;
+    out.cos_freq = w.amp * w.freq * cos(phase_arg) * env;
+    out.dir      = dir;
+    out.freq     = w.freq;
     return out;
 }
 
 @fragment
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
-    let pos   = (in.uv * 2.0 - vec2(1.0)) * 6.0;
-    let t     = sim.tick;
-    let noise = sim.noise;
+    let t = sim.t_epoch * (TAU / 0.1) + sim.tick;
 
-    let w0 = sample_wave(env.waves[0], 0u, pos, t, noise);
-    let w1 = sample_wave(env.waves[1], 1u, pos, t, noise);
-    let w2 = sample_wave(env.waves[2], 2u, pos, t, noise);
+    // Causal horizon: wave phase velocity = 1, so the field at position x
+    // is zero until t = |x|. The universe grows because physics says so.
+    let camera_span = 12.5;
+    let pos         = (in.uv * 2.0 - vec2(1.0)) * camera_span + vec2(sim.pan_x, sim.pan_y);
+
+    let wave0 = sample_wave(0u, pos, t);
+    let wave1 = sample_wave(1u, pos, t);
+    let wave2 = sample_wave(2u, pos, t);
 
     // forks — each branch forks once at a hash-determined generation
-    let f0 = sample_fork(env.waves[0], 0u, 0u, pos, t, noise);
-    let f1 = sample_fork(env.waves[1], 1u, 1u, pos, t, noise);
-    let f2 = sample_fork(env.waves[2], 2u, 2u, pos, t, noise);
+    let f0 = sample_fork(0u, pos, t);
+    let f1 = sample_fork(1u, pos, t);
+    let f2 = sample_fork(2u, pos, t);
 
-    let amp_sum = env.waves[0].amp + env.waves[1].amp + env.waves[2].amp;
+    let amp_sum = wc.waves[0].base_amp + wc.waves[1].base_amp + wc.waves[2].base_amp;
 
     // field value — branches + forks
-    let field = (w0.sin_term + w1.sin_term + w2.sin_term
+    let field = (wave0.sin_term + wave1.sin_term + wave2.sin_term
                + f0.sin_term + f1.sin_term + f2.sin_term) / amp_sum;
 
     // dfield/dT — positive = rising toward a crest, negative = falling away
-    let dfield_dt = -(w0.cos_freq + w1.cos_freq + w2.cos_freq
+    let dfield_dt = -(wave0.cos_freq + wave1.cos_freq + wave2.cos_freq
                     + f0.cos_freq + f1.cos_freq + f2.cos_freq) / amp_sum;
 
     // gradient field — points toward nearest crest in space
     let gradient = vec2(
-        (w0.cos_freq * w0.dir.x + w1.cos_freq * w1.dir.x + w2.cos_freq * w2.dir.x
+        (wave0.cos_freq * wave0.dir.x + wave1.cos_freq * wave1.dir.x + wave2.cos_freq * wave2.dir.x
        + f0.cos_freq * f0.dir.x + f1.cos_freq * f1.dir.x + f2.cos_freq * f2.dir.x) / amp_sum,
-        (w0.cos_freq * w0.dir.y + w1.cos_freq * w1.dir.y + w2.cos_freq * w2.dir.y
+        (wave0.cos_freq * wave0.dir.y + wave1.cos_freq * wave1.dir.y + wave2.cos_freq * wave2.dir.y
        + f0.cos_freq * f0.dir.y + f1.cos_freq * f1.dir.y + f2.cos_freq * f2.dir.y) / amp_sum,
     );
 
     let signal = pow(max(field, 0.0), 3.0);
 
     // branch color — forks share their origin's color (same branch, diverged parameters)
-    let r0   = max(w0.sin_term + f0.sin_term, 0.0) / (env.waves[0].amp + 1e-5);
-    let r1   = max(w1.sin_term + f1.sin_term, 0.0) / (env.waves[1].amp + 1e-5);
-    let r2   = max(w2.sin_term + f2.sin_term, 0.0) / (env.waves[2].amp + 1e-5);
+    let r0   = max(wave0.sin_term + f0.sin_term, 0.0) / (wc.waves[0].base_amp + 1e-5);
+    let r1   = max(wave1.sin_term + f1.sin_term, 0.0) / (wc.waves[1].base_amp + 1e-5);
+    let r2   = max(wave2.sin_term + f2.sin_term, 0.0) / (wc.waves[2].base_amp + 1e-5);
     let rsum = r0 + r1 + r2 + 1e-5;
     let species_col = (r0 / rsum) * wave_colors.c[0].xyz
                     + (r1 / rsum) * wave_colors.c[1].xyz

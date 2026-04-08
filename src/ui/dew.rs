@@ -1,6 +1,6 @@
 //! Dew theme
 
-use egui::{Color32, Stroke, Rounding, Margin, Vec2, Context, Visuals, Rect, Painter, Response, Ui, FontId, Sense};
+use egui::{Color32, Stroke, CornerRadius, Margin, Vec2, Context, Visuals, Rect, Painter, Response, Ui, FontId, Sense};
 use crate::ui::ResponseExt;
 
 // ── Dew palette ──────────────────────────────────────────────────────────────
@@ -32,12 +32,12 @@ pub fn apply_theme(ctx: &Context) {
     visuals.code_bg_color       = INSET_FILL;
     visuals.text_cursor.stroke.color = Color32::BLACK;
 
-    let r = Rounding::from(R_SM);
+    let r = CornerRadius::from(R_SM);
     let dew_stroke  = Stroke::new(1.0, DEW_BORDER);
     let inset_stroke = Stroke::new(1.0, INSET_BORDER);
 
-    visuals.window_corner_radius = Rounding::same(6);
-    visuals.menu_corner_radius   = Rounding::same(6);
+    visuals.window_corner_radius = CornerRadius::same(6);
+    visuals.menu_corner_radius   = CornerRadius::same(6);
 
     visuals.widgets.noninteractive.bg_fill      = PEARL;
     visuals.widgets.noninteractive.weak_bg_fill  = PEARL;
@@ -76,7 +76,7 @@ pub fn apply_theme(ctx: &Context) {
     style.spacing.window_margin  = Margin::same(8);
     style.spacing.slider_width   = 150.0;
 
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 
 // ── Primitive helpers ─────────────────────────────────────────────────────────
@@ -142,7 +142,7 @@ pub fn text_field_edit(ui: &mut Ui, text: &mut String, font_size: f32, height: f
         rect.center(),
         egui::vec2(rect.width() - 8.0, font_size + padding.y * 2.0 + 2.0),
     );
-    let mut child = ui.child_ui(inner_rect, *ui.layout(), None);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner_rect).layout(*ui.layout()));
     // Force a lighter selection background for better text contrast
     child.visuals_mut().selection.bg_fill = Color32::from_rgb(180, 210, 255);
     child.visuals_mut().selection.stroke = Stroke::new(1.0, Color32::BLACK);
@@ -230,12 +230,12 @@ pub fn draw_gumdrop(ui: &mut Ui, response: &Response, rect: Rect) -> f32 {
 /// Plain section-header label that never flickers on click.
 /// Paints text directly — bypasses egui's widget state machine so there is
 /// no one-frame "active" style applied when the user clicks.
-pub fn collapsible_header(ui: &mut Ui, title: &str, is_expanded: bool) -> bool {
+pub fn collapsible_header(ui: &mut Ui, title: &str, _is_expanded: bool) -> bool {
     let mut clicked = false;
     ui.horizontal(|ui| {
         let btn_resp = section_toggle_btn(ui);
         let lbl_text = title;
-        let lbl_resp = section_label(ui, &lbl_text);
+        let lbl_resp = section_label(ui, lbl_text);
 
         if btn_resp.clicked() || lbl_resp.clicked() { clicked = true; }
     });
@@ -256,7 +256,7 @@ pub fn section_label(ui: &mut Ui, text: &str) -> Response {
 }
 
 /// Animating Dew dot button, encapsulating hover transparency,
-/// squish-depth, and inner glyph rendering perfectly.
+/// squish-depth, and inner glyph rendering.
 pub fn draw_dot_btn(
     ui: &mut Ui,
     resp: &Response,
@@ -277,7 +277,7 @@ pub fn draw_dot_btn(
         0.05,
     );
 
-    let hover_t = group_hover_t.unwrap_or_else(|| {
+    let _hover_t = group_hover_t.unwrap_or_else(|| {
         ui.ctx().animate_value_with_time(
             resp.id.with("hover"),
             if resp.hovered() { 1.0 } else { 0.0 },
@@ -334,12 +334,12 @@ pub fn draw_dot_btn(
     p.circle_stroke(draw_center, r, Stroke::new(1.0, Color32::from_rgba_premultiplied(0, 0, 0, 130)));
 }
 
-/// Earthly colored circle used as a section collapse/expand toggle.
+/// Circle used as a section collapse/expand toggle.
 /// Matches the title-bar minimize button visually (r = 6.0).
 pub fn section_toggle_btn(ui: &mut Ui) -> Response {
     let r = 6.0;
-    // Auto-id based on cursor position here ensures unique ID for every panel button mapped
-    let (rect, mut resp) = ui.allocate_exact_size(egui::vec2(r * 2.0 + 2.0, r * 2.0 + 2.0), Sense::click());
+    // ID based on cursor position provides unique ID for every panel button mapped
+    let (_rect, resp) = ui.allocate_exact_size(egui::vec2(r * 2.0 + 2.0, r * 2.0 + 2.0), Sense::click());
     let color = DEW_BODY;
     draw_dot_btn(ui, &resp, r, color, ".", None);
     resp
@@ -391,7 +391,7 @@ pub fn button_w(ui: &mut Ui, text: &str, min_w: f32) -> Response {
 pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
     let galley = ui.painter().layout_no_wrap(
         text.to_string(),
-        FontId::monospace(16.0),
+        FontId::monospace(24.0),
         Color32::BLACK,
     );
     let padding = egui::vec2(5.0, 2.0);
@@ -405,7 +405,7 @@ pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
         let shadow_a = (120.0 * (1.0 - shift_y / 1.5)) as u8;
         if shadow_a > 0 {
             ui.painter().galley(text_pos + egui::vec2(0.0, 1.0),
-                ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0),
+                ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(24.0),
                     Color32::from_rgba_premultiplied(255, 255, 255, shadow_a)),
                 Color32::BLACK);
         }
@@ -414,12 +414,12 @@ pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
     response.hand()
 }
 
-pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32) -> Response {
-    let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), Color32::BLACK);
+pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> Response {
+    let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::BLACK);
     let gw = measure.size().x;
     let gh = measure.size().y;
     let side = min_side.max(gw + 6.0); // at least 3px padding each side
-    let (rect, mut response) = ui.allocate_exact_size(egui::vec2(side, side), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(side, side), Sense::click());
     if ui.is_rect_visible(rect) {
         let shift_y = draw_gumdrop(ui, &response, rect);
         // For unrotated text, pos is the top-left of the layout box.
@@ -434,7 +434,7 @@ pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32) -> Response {
         ] {
             ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
                 pos: pos + off,
-                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), color),
+                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), color),
                 underline: egui::Stroke::NONE,
                 fallback_color: color,
                 override_text_color: Some(color),
@@ -448,12 +448,12 @@ pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32) -> Response {
 
 /// Same as `key_cap_small` but the glyph is rotated by `angle` radians (±π/2 for left/right).
 /// Use "↑" as the glyph — it renders thick and looks correct when rotated.
-pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32) -> Response {
-    let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), Color32::BLACK);
+pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32, font_size: f32) -> Response {
+    let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::BLACK);
     let gw = measure.size().x;
     let gh = measure.size().y;
     let side = min_side.max(gw + 6.0); // at least 3px padding each side
-    let (rect, mut response) = ui.allocate_exact_size(egui::vec2(side, side), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(side, side), Sense::click());
     if ui.is_rect_visible(rect) {
         let shift_y = draw_gumdrop(ui, &response, rect);
         // s = +1 for → (CW, +π/2), -1 for ← (CCW, -π/2).
@@ -471,7 +471,7 @@ pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32)
         ] {
             ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
                 pos: pos + off,
-                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(16.0), color),
+                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), color),
                 underline: egui::Stroke::NONE,
                 fallback_color: color,
                 override_text_color: Some(color),
@@ -486,7 +486,7 @@ pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32)
 // ── Symmetric log slider ───────────────────────────────────────────────────────
 
 
-pub fn slider_log_f64(ui: &mut Ui, value: &mut f64, range: std::ops::RangeInclusive<f64>, text: &str, fmt: fn(f64) -> String) -> Response {
+pub fn slider_log_f64(ui: &mut Ui, value: &mut f64, range: std::ops::RangeInclusive<f64>, _text: &str, _fmt: fn(f64) -> String) -> Response {
     let min = *range.start();
     let max = *range.end();
     let l_min = if min <= 0.0 { 0.1f64.ln() } else { min.ln() };
@@ -500,15 +500,14 @@ pub fn slider_log_f64(ui: &mut Ui, value: &mut f64, range: std::ops::RangeInclus
 
         let (rect, mut s_resp) = ui.allocate_exact_size(egui::vec2(slider_width, height), Sense::click_and_drag());
 
-        if s_resp.dragged() || s_resp.clicked() {
-            if let Some(pos) = s_resp.interact_pointer_pos() {
+        if (s_resp.dragged() || s_resp.clicked())
+            && let Some(pos) = s_resp.interact_pointer_pos() {
                 let x = pos.x - rect.min.x;
                 let t = (x / slider_width).clamp(0.0, 1.0) as f64;
                 let l_val = l_min + t * (l_max - l_min);
                 *value = l_val.exp().clamp(min, max);
                 s_resp.mark_changed();
             }
-        }
 
         if ui.is_rect_visible(rect) {
             let p = ui.painter();
@@ -560,8 +559,8 @@ impl crate::ui::theme::ThemeProvider for Dew {
     fn apply_theme(&self, ctx: &Context) { apply_theme(ctx); }
     fn draw_sunken(&self, painter: &Painter, rect: Rect) { draw_inset(painter, rect); }
     fn section_toggle_btn(&self, ui: &mut Ui) -> Response { section_toggle_btn(ui) }
-    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32) -> Response { key_cap_small(ui, text, side) }
-    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32) -> Response { key_cap_small_rotated(ui, text, angle, side) }
+    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32) -> Response { key_cap_small(ui, text, side, font_size) }
+    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32) -> Response { key_cap_small_rotated(ui, text, angle, side, font_size) }
     fn collapsible_header(&self, ui: &mut Ui, text: &str, is_open: bool) -> bool { crate::ui::widgets::collapsible_header(self, ui, text, is_open) }
     fn paint_slider_track(&self, ui: &mut Ui, track_rect: Rect, center_x: f32) {
         let p = ui.painter();
@@ -650,6 +649,50 @@ impl crate::ui::theme::ThemeProvider for Dew {
             });
         }
     }
+
+    fn paint_slider_gauge(&self, ui: &mut Ui, bg_rect: Rect, fill_rect: Rect, is_down: bool, is_hov: bool) {
+        let p = ui.painter();
+        
+        p.rect_filled(bg_rect, R_SM, INSET_FILL);
+        draw_inset(p, bg_rect);
+        
+        if fill_rect.width() > 0.0 {
+            let r = R_SM;
+            let darken = if is_down { 0.7 } else if is_hov { 1.1 } else { 1.0 };
+            let c = DEW_BODY;
+            let c_r = (c.r() as f32 * darken).clamp(0.0, 255.0) as u8;
+            let c_g = (c.g() as f32 * darken).clamp(0.0, 255.0) as u8;
+            let c_b = (c.b() as f32 * darken).clamp(0.0, 255.0) as u8;
+            let active = Color32::from_rgb(c_r, c_g, c_b);
+
+            p.rect_filled(fill_rect, r, active);
+
+            let lr = (c_r as f32 * 1.5).min(255.0) as u8;
+            let lg = (c_g as f32 * 1.5).min(255.0) as u8;
+            let lb = (c_b as f32 * 1.5).min(255.0) as u8;
+            
+            // Only draw interior glows if the rect is wide enough
+            if fill_rect.width() > 3.0 {
+                let glow_rect = Rect::from_min_max(
+                    egui::pos2(fill_rect.min.x + 1.5, fill_rect.center().y),
+                    fill_rect.max - egui::vec2(1.5, 1.5),
+                );
+                p.rect_filled(glow_rect, egui::epaint::CornerRadiusF32 { nw: 0.0, ne: 0.0, sw: r - 1.5, se: r - 1.5 },
+                    Color32::from_rgba_premultiplied(lr, lg, lb, 180));
+
+                let hl_op = if is_down { 110 } else { 220 };
+                let hl_rect = Rect::from_min_size(
+                    fill_rect.min + egui::vec2(1.5, 1.0),
+                    egui::vec2(fill_rect.width() - 3.0, r * 0.8),
+                );
+                p.rect_filled(hl_rect,
+                    egui::epaint::CornerRadiusF32 { nw: r - 1.5, ne: r - 1.5, sw: r * 0.3, se: r * 0.3 },
+                    Color32::from_rgba_premultiplied(255, 255, 255, hl_op));
+            }
+
+            p.rect_stroke(fill_rect, r, Stroke::new(1.0, Color32::from_rgba_premultiplied(0, 0, 0, 130)), egui::StrokeKind::Outside);
+        }
+    }
     fn section_label(&self, ui: &mut Ui, text: &str) -> Response { section_label(ui, text) }
     fn text_field_edit(&self, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response { text_field_edit(ui, text, font_size, height) }
 
@@ -730,5 +773,9 @@ impl crate::ui::theme::ThemeProvider for Dew {
         } else if !is_hovered {
             p.rect_stroke(rect, r, Stroke::new(1.0, Color32::from_rgba_premultiplied(0, 0, 0, 130)), egui::StrokeKind::Outside);
         }
+    }
+
+    fn chart_bg(&self) -> egui::Color32 {
+        egui::Color32::from_rgb(8, 8, 12)
     }
 }

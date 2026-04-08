@@ -18,6 +18,7 @@ impl<T: Default> TripleBuffer<T> {
         })
     }
 
+    #[allow(clippy::mut_from_ref)]
     pub fn write(&self) -> &mut T {
         let state = self.state.load(Ordering::Acquire);
         let back = (state >> 4) & 0b11;
@@ -54,7 +55,7 @@ impl<T: Default> TripleBuffer<T> {
             let middle = (current >> 2) & 0b11;
             let front = current & 0b11;
             
-            let new_state = (0 << 6) | (back << 4) | (front << 2) | middle;
+            let new_state = (back << 4) | (front << 2) | middle;
             
             match self.state.compare_exchange_weak(
                 current, new_state, Ordering::Release, Ordering::Relaxed

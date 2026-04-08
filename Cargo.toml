@@ -1,6 +1,6 @@
 [package]
 name = "anytimeuniverse"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["GiotCa"]
 license = "BSD-3-Clause"
@@ -11,10 +11,18 @@ name = "anytimeuniverse"
 path = "src/main.rs"
 
 [dependencies]
+# rendering
 wgpu     = "29"
 pollster = "0.4"
 bytemuck = "1"
-winit    = "0.30"
-egui = "0.34"
-egui-wgpu = "0.34"
+image    = "0.25.10"
+
+# ui
+winit      = "0.30"
+egui       = "0.34"
+egui-wgpu  = "0.34"
 egui-winit = "0.34"
+crossterm  = "0.29"
+
+# audio
+cpal = "0.15"

@@ -1,14 +1,14 @@
 //! Rectangle theme
 
-use egui::{Color32, Stroke, Rounding, Margin, Vec2, Context, Visuals, Painter, Response, Ui, FontId, Sense};
-use crate::ui::ResponseExt;
+use egui::{Color32, Stroke, CornerRadius, Margin, Vec2, Context, Visuals, Painter, Response, Ui, FontId, Sense};
+use crate::ui::{GAP_MD, GAP_SM, GAP_XS, ResponseExt};
 
 const TERM_BG:     Color32 = Color32::BLACK;
 const TERM_GREEN:  Color32 = Color32::from_rgb(0,   230, 65);
 
 pub fn apply_theme(ctx: &Context) {
     let mut style = (*ctx.global_style()).clone();
-    let z = Rounding::ZERO;
+    let z = CornerRadius::ZERO;
 
     let mut visuals = Visuals::dark();
     visuals.window_fill        = TERM_BG;
@@ -62,29 +62,29 @@ pub fn apply_theme(ctx: &Context) {
     style.visuals = visuals;
     style.interaction.selectable_labels = false;
 
-    style.spacing.item_spacing   = Vec2::new(8.0, 8.0);
-    style.spacing.button_padding = Vec2::new(6.0, 4.0);
-    style.spacing.window_margin  = Margin::same(6);
+    style.spacing.item_spacing   = Vec2::new(GAP_MD, GAP_MD);
+    style.spacing.button_padding = Vec2::new(GAP_SM, GAP_SM);
+    style.spacing.window_margin  = Margin::same(GAP_SM as i8);
     style.spacing.slider_width   = 150.0;
 
-    ctx.set_style(style);
+    ctx.set_global_style(style);
 }
 
 pub fn text_field_edit(ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response {
     let field_w = ui.available_width();
-    let padding = egui::vec2(6.0, 3.0);
+    let padding = egui::vec2(GAP_MD, GAP_SM);
     let field_h = if height > 0.0 { height } else { font_size + padding.y * 2.0 + 2.0 };
     let (rect, _) = ui.allocate_exact_size(egui::vec2(field_w, field_h), Sense::hover());
     if ui.is_rect_visible(rect) {
         let p = ui.painter();
-        p.rect_filled(rect, Rounding::ZERO, TERM_BG);
-        p.rect_stroke(rect, Rounding::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
+        p.rect_filled(rect, CornerRadius::ZERO, TERM_BG);
+        p.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
     }
     let inner_rect = egui::Rect::from_center_size(
         rect.center(),
-        egui::vec2(rect.width() - 8.0, font_size + padding.y * 2.0 + 2.0),
+        egui::vec2(rect.width() - GAP_MD, font_size + padding.y * 2.0 + 2.0),
     );
-    let mut child = ui.child_ui(inner_rect, *ui.layout(), None);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner_rect).layout(*ui.layout()));
     child.visuals_mut().extreme_bg_color = TERM_BG;
     child.visuals_mut().widgets.hovered.bg_fill      = TERM_BG;
     child.visuals_mut().widgets.hovered.weak_bg_fill = TERM_BG;
@@ -107,8 +107,8 @@ pub fn section_toggle_btn(ui: &mut Ui) -> Response {
         let bg = TERM_BG;
         let fg = TERM_GREEN;
 
-        ui.painter().rect_filled(btn_rect, egui::Rounding::ZERO, bg);
-        ui.painter().rect_stroke(btn_rect, egui::Rounding::ZERO, if is_down || is_hov { Stroke::NONE } else { Stroke::new(1.0, fg) }, egui::StrokeKind::Outside);
+        ui.painter().rect_filled(btn_rect, egui::CornerRadius::ZERO, bg);
+        ui.painter().rect_stroke(btn_rect, egui::CornerRadius::ZERO, if is_down || is_hov { Stroke::NONE } else { Stroke::new(1.0, fg) }, egui::StrokeKind::Outside);
 
         let offset = if is_down { 1.0 } else { 0.0 };
         let text_pos = btn_rect.center() + egui::vec2(offset, offset);
@@ -130,11 +130,11 @@ pub fn collapsible_header(ui: &mut Ui, title: &str, _is_expanded: bool) -> bool 
 }
 
 pub fn draw_outset(painter: &Painter, rect: egui::Rect) {
-    painter.rect_stroke(rect, Rounding::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
+    painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
 }
 
 pub fn draw_sunken(painter: &Painter, rect: egui::Rect) {
-    painter.rect_stroke(rect, Rounding::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
+    painter.rect_stroke(rect, CornerRadius::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
 }
 
 pub fn button(ui: &mut Ui, text: &str) -> Response {
@@ -142,7 +142,7 @@ pub fn button(ui: &mut Ui, text: &str) -> Response {
 }
 
 pub fn button_w(ui: &mut Ui, text: &str, min_w: f32) -> Response {
-    let padding = egui::vec2(8.0, 4.0);
+    let padding = egui::vec2(GAP_MD, GAP_SM);
     let is_hovered_pre = false; // computed after allocation
     let galley = ui.painter().layout_no_wrap(
         text.to_string(),
@@ -165,9 +165,9 @@ pub fn button_w(ui: &mut Ui, text: &str, min_w: f32) -> Response {
         let bg = TERM_BG;
         let fg = TERM_GREEN;
         p.rect_filled(rect, 0.0, bg);
-        p.rect_stroke(rect, Rounding::ZERO, if is_down || is_hov { Stroke::NONE } else { Stroke::new(1.0, fg) }, egui::StrokeKind::Outside);
+        p.rect_stroke(rect, CornerRadius::ZERO, if is_down || is_hov { Stroke::NONE } else { Stroke::new(1.0, fg) }, egui::StrokeKind::Outside);
         let offset = if is_down { egui::vec2(1.0, 1.0) } else { egui::vec2(0.0, 0.0) };
-        let text_pos = ui.layout().align_size_within_rect(galley.size(), rect.shrink(2.0)).min + offset;
+        let text_pos = ui.layout().align_size_within_rect(galley.size(), rect.shrink(GAP_XS)).min + offset;
         p.galley(text_pos, galley, fg);
     }
     response.hand()
@@ -175,13 +175,14 @@ pub fn button_w(ui: &mut Ui, text: &str, min_w: f32) -> Response {
 
 /// A keycap badge — sunken border, monospace label, compact. Returns a clickable Response.
 /// Used in the keyboard cheatsheet.
-pub fn key_cap(ui: &mut Ui, text: &str, min_side: f32) -> Response {
+pub fn key_cap(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> Response {
     let galley = ui.painter().layout_no_wrap(
         text.to_string(),
-        FontId::monospace(24.0),
+        FontId::monospace(font_size),
         TERM_GREEN,
     );
-    let size = egui::vec2(min_side, min_side);
+    let side = min_side.max(galley.size().x + 6.0);
+    let size = egui::vec2(side, side);
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     if ui.is_rect_visible(rect) {
         let p = ui.painter();
@@ -231,7 +232,7 @@ pub fn slider_log_f64(ui: &mut Ui, value: &mut f64, range: std::ops::RangeInclus
         if ui.is_rect_visible(rect) {
             let p = ui.painter();
 
-            let track_h = 4.0;
+            let track_h = GAP_SM;
             let track_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(slider_width, track_h));
             draw_sunken(p, track_rect);
 
@@ -242,16 +243,16 @@ pub fn slider_log_f64(ui: &mut Ui, value: &mut f64, range: std::ops::RangeInclus
             let handle_w = 11.0;
             let handle_rect = egui::Rect::from_center_size(egui::pos2(handle_x, rect.center().y), egui::vec2(handle_w, height * 1.2));
 
-            let is_down = s_resp.dragged() || s_resp.is_pointer_button_down_on();
-            let is_hov  = s_resp.hovered();
+            let _is_down = s_resp.dragged() || s_resp.is_pointer_button_down_on();
+            let _is_hov  = s_resp.hovered();
             let bg = TERM_BG;
         let fg = TERM_GREEN;
 
             p.rect_filled(handle_rect, 0.0, bg);
-            p.rect_stroke(handle_rect, Rounding::ZERO, Stroke::new(1.0, fg), egui::StrokeKind::Outside);
+            p.rect_stroke(handle_rect, CornerRadius::ZERO, Stroke::new(1.0, fg), egui::StrokeKind::Outside);
         }
 
-        ui.add_space(8.0);
+        ui.add_space(GAP_MD);
         let label = format!("{} {}", fmt(*value), text);
         ui.label(label);
 
@@ -261,10 +262,10 @@ pub fn slider_log_f64(ui: &mut Ui, value: &mut f64, range: std::ops::RangeInclus
     root_response
 }
 
-pub fn key_cap_rotated(ui: &mut egui::Ui, text: &str, angle: f32, min_side: f32) -> egui::Response {
+pub fn key_cap_rotated(ui: &mut egui::Ui, text: &str, angle: f32, min_side: f32, font_size: f32) -> egui::Response {
     let galley = ui.painter().layout_no_wrap(
         text.to_string(),
-        egui::FontId::monospace(24.0),
+        egui::FontId::monospace(font_size),
         TERM_GREEN,
     );
     let size = egui::vec2(min_side, min_side);
@@ -308,8 +309,8 @@ impl crate::ui::theme::ThemeProvider for Rect {
     fn apply_theme(&self, ctx: &Context) { apply_theme(ctx); }
     fn draw_sunken(&self, painter: &Painter, rect: egui::Rect) { draw_sunken(painter, rect); }
     fn section_toggle_btn(&self, ui: &mut Ui) -> Response { section_toggle_btn(ui) }
-    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32) -> Response { key_cap(ui, text, side) }
-    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32) -> Response { key_cap_rotated(ui, text, angle, side) }
+    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32) -> Response { key_cap(ui, text, side, font_size) }
+    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32) -> Response { key_cap_rotated(ui, text, angle, side, font_size) }
     fn collapsible_header(&self, ui: &mut Ui, text: &str, is_open: bool) -> bool { crate::ui::widgets::collapsible_header(self, ui, text, is_open) }
     fn paint_slider_track(&self, ui: &mut Ui, track_rect: egui::Rect, center_x: f32) {
         let p = ui.painter();
@@ -325,27 +326,43 @@ impl crate::ui::theme::ThemeProvider for Rect {
         );
 
         p.line_segment(
-            [egui::pos2(center_x - 1.0, track_rect.min.y - 4.0), egui::pos2(center_x - 1.0, track_rect.max.y + 4.0)],
+            [egui::pos2(center_x - 1.0, track_rect.min.y - GAP_SM), egui::pos2(center_x - 1.0, track_rect.max.y + GAP_SM)],
             Stroke::new(1.0, TERM_GREEN),
         );
         p.line_segment(
-            [egui::pos2(center_x, track_rect.min.y - 3.0), egui::pos2(center_x, track_rect.max.y + 3.0)],
+            [egui::pos2(center_x, track_rect.min.y - GAP_SM), egui::pos2(center_x, track_rect.max.y + GAP_SM)],
             Stroke::new(1.0, TERM_GREEN),
         );
         p.line_segment(
-            [egui::pos2(center_x + 1.0, track_rect.min.y - 4.0), egui::pos2(center_x + 1.0, track_rect.max.y + 4.0)],
+            [egui::pos2(center_x + 1.0, track_rect.min.y - GAP_SM), egui::pos2(center_x + 1.0, track_rect.max.y + GAP_SM)],
             Stroke::new(1.0, TERM_GREEN),
         );
     }
 
-    fn paint_slider_thumb(&self, ui: &mut Ui, handle_rect: egui::Rect, is_down: bool, is_hov: bool) {
+    fn paint_slider_thumb(&self, ui: &mut Ui, handle_rect: egui::Rect, _is_down: bool, _is_hov: bool) {
         let p = ui.painter();
         p.rect_filled(handle_rect, 0.0, TERM_BG);
-        p.rect_stroke(handle_rect, Rounding::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
+        p.rect_stroke(handle_rect, CornerRadius::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
     }
 
-    fn paint_slider_text(&self, ui: &mut Ui, text: &str) {
+    fn paint_slider_text(&self, _ui: &mut Ui, _text: &str) {
         // Rect theme doesn't inline slider text drawing typically, or if it does, we can leave it empty / generic
+    }
+    
+    fn paint_slider_gauge(&self, ui: &mut Ui, bg_rect: egui::Rect, fill_rect: egui::Rect, is_down: bool, is_hovered: bool) {
+        let p = ui.painter();
+        draw_sunken(p, bg_rect);
+        
+        if fill_rect.width() > 0.0 {
+            let fill_color = if is_down {
+                TERM_GREEN
+            } else if is_hovered {
+                TERM_GREEN.linear_multiply(0.8)
+            } else {
+                TERM_GREEN.linear_multiply(0.6)
+            };
+            p.rect_filled(fill_rect, 0.0, fill_color);
+        }
     }
     fn section_label(&self, ui: &mut Ui, text: &str) -> Response { ui.label(text) }
     fn text_field_edit(&self, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response { text_field_edit(ui, text, font_size, height) }
@@ -362,7 +379,7 @@ impl crate::ui::theme::ThemeProvider for Rect {
             draw_outset(p, rect);
             return 0.0;
         }
-        return 0.0;
+        0.0
     }
 
     fn key_cap_text_color(&self) -> egui::Color32 {
@@ -373,5 +390,13 @@ impl crate::ui::theme::ThemeProvider for Rect {
         if !is_down && !is_hovered {
             draw_outset(p, rect);
         }
+    }
+
+    fn chart_bg(&self) -> egui::Color32 {
+        egui::Color32::BLACK
+    }
+
+    fn chart_axis_color(&self) -> egui::Color32 {
+        TERM_GREEN.linear_multiply(0.6)
     }
 }

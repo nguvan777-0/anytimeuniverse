@@ -1,5 +1,5 @@
-/// Shared control state for both UI and headless modes.
-/// All mutations live here — UI and headless map their inputs to these methods.
+/// Shared control state for both UI and ascii modes.
+/// Single place for input → state changes. UI and ascii mode use these methods.
 
 pub struct Controls {
     pub t:      f64,

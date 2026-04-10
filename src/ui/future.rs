@@ -1,4 +1,5 @@
 //! Future theme
+#![allow(dead_code)]
 
 use egui::{
     Color32, Stroke, CornerRadius, Margin, Vec2, Context, Visuals, Rect, Painter,
@@ -170,7 +171,99 @@ fn draw_irid_stripe(painter: &Painter, draw_rect: Rect, r: f32, alpha_factor: f3
     }
 }
 
+// ── Holographic Hover Effect ──────────────────────────────────────────────────
+
+pub fn draw_holographic_hover(_ctx: &Context, p: &Painter, draw_rect: Rect, r: f32, hover_t: f32) {
+    let n: usize = 32;
+    let shrink = 1.0;
+    let sx = draw_rect.min.x + shrink;
+    let sy = draw_rect.min.y + shrink;
+    let sw = draw_rect.width() - shrink * 2.0;
+    let sh = draw_rect.height() - shrink * 2.0;
+    let r_inner = (r - shrink).max(0.0);
+
+    if sw <= 0.0 || sh <= 0.0 { return; }
+
+    // Use full-body holographic rainbow as the DEFAULT view!
+    // Base brightness is 0.70, pushing up to 1.0 when actually hovered!
+    let alpha_factor = 0.70 + (hover_t * 0.30);
+
+    for i in 0..n {
+        let t0 = i as f32 / n as f32;
+        let t1 = (i + 1) as f32 / n as f32;
+        let tc = (t0 + t1) * 0.5;
+        let base = irid_color(tc);
+        let alpha = (255.0 * alpha_factor) as u8;
+        
+        let col = Color32::from_rgba_premultiplied(
+            ((base.r() as f32) * alpha_factor) as u8,
+            ((base.g() as f32) * alpha_factor) as u8,
+            ((base.b() as f32) * alpha_factor) as u8,
+            alpha,
+        );
+        let x0 = sx + t0 * sw;
+        let x1 = sx + t1 * sw;
+        let seg = Rect::from_min_max(pos2(x0, sy), pos2(x1, sy + sh));
+        let rnd = egui::epaint::CornerRadiusF32 {
+            nw: if i == 0     { r_inner } else { 0.0 },
+            sw: if i == 0     { r_inner } else { 0.0 },
+            ne: if i == n - 1 { r_inner } else { 0.0 },
+            se: if i == n - 1 { r_inner } else { 0.0 },
+        };
+        p.rect_filled(seg, rnd, col);
+    }
+}
+
 // ── Future button primitive ───────────────────────────────────────────────────
+
+pub fn draw_future_pill_base(ctx: &Context, p: &Painter, draw_rect: Rect, base_rect: Rect, press_t: f32, hover_t: f32) {
+    let r = base_rect.height() / 2.0;
+
+    // Drop shadow — stays at rest, fades as face descends into it (and fades on hover)
+    let sh_op = (80.0 * (1.0 - press_t) * (1.0 - hover_t)).max(0.0) as u8;
+    if sh_op > 0 {
+        p.rect_filled(
+            base_rect.translate(vec2(0.0, 1.5)),
+            r + 0.5,
+            Color32::from_rgba_premultiplied(0, 0, 0, sh_op),
+        );
+    }
+
+    // Body — ALWAYS draw bright iridescent holographic rainbow
+    draw_holographic_hover(ctx, p, draw_rect, r, 1.0);
+
+    // Bottom future reflection (blue-shifted, lower half) - intensifies on hover
+    let glow_op = (155.0 * (1.0 - press_t * 0.65) + hover_t * 80.0).max(0.0).min(255.0) as u8;
+    if glow_op > 0 {
+        let glow = Rect::from_min_max(
+            pos2(draw_rect.min.x + 1.5, draw_rect.center().y),
+            draw_rect.max - vec2(1.5, 1.5),
+        );
+        p.rect_filled(glow,
+            egui::epaint::CornerRadiusF32 { nw: 0.0, ne: 0.0, sw: r - 1.5, se: r - 1.5 },
+            Color32::from_rgba_premultiplied(
+                FUTURE_GLOW.r(), FUTURE_GLOW.g(), FUTURE_GLOW.b(), glow_op));
+    }
+
+    // Top specular cap — very bright, hallmark of polished future - intensifies on hover
+    let hl_op = (215.0 * (1.0 - press_t * 0.55) + hover_t * 40.0).max(0.0).min(255.0) as u8;
+    if hl_op > 0 {
+        let hl = Rect::from_min_size(
+            draw_rect.min + vec2(1.5, 1.0),
+            vec2(draw_rect.width() - 3.0, r * 0.72),
+        );
+        p.rect_filled(hl,
+            egui::epaint::CornerRadiusF32 { nw: r - 1.5, ne: r - 1.5, sw: r * 0.25, se: r * 0.25 },
+            Color32::from_rgba_premultiplied(215, 228, 255, hl_op));
+    }
+
+    // Full-body Holographic Iridescent Background (Default View!)
+    draw_holographic_hover(ctx, p, draw_rect, r, hover_t);
+
+    // Etched dark border
+    p.rect_stroke(draw_rect, r, Stroke::new(1.0,
+        Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
+}
 
 /// Polished future pill with squish physics.  Returns the Y push-down (0–1.5).
 pub fn draw_future_pill(ui: &mut Ui, response: &Response, rect: Rect) -> f32 {
@@ -188,60 +281,9 @@ pub fn draw_future_pill(ui: &mut Ui, response: &Response, rect: Rect) -> f32 {
 
     let push_y = press_t * 1.5;
     let draw_rect = rect.translate(vec2(0.0, push_y));
-    let r = rect.height() / 2.0;
     let p = ui.painter();
 
-    // Drop shadow — stays at rest, fades as face descends into it
-    let sh_op = (80.0 * (1.0 - press_t)) as u8;
-    if sh_op > 0 {
-        p.rect_filled(
-            rect.translate(vec2(0.0, 1.5)),
-            r + 0.5,
-            Color32::from_rgba_premultiplied(0, 0, 0, sh_op),
-        );
-    }
-
-    // Body — gunmetal, darkens on press, brightens on hover
-    let darken = 1.0 - press_t * 0.35 + hover_t * 0.12;
-    let c = FUTURE_BODY;
-    let body = Color32::from_rgb(
-        (c.r() as f32 * darken) as u8,
-        (c.g() as f32 * darken) as u8,
-        (c.b() as f32 * darken) as u8,
-    );
-    p.rect_filled(draw_rect, r, body);
-
-    // Bottom future reflection (blue-shifted, lower half)
-    let glow_op = (155.0 * (1.0 - press_t * 0.65)) as u8;
-    if glow_op > 0 {
-        let glow = Rect::from_min_max(
-            pos2(draw_rect.min.x + 1.5, draw_rect.center().y),
-            draw_rect.max - vec2(1.5, 1.5),
-        );
-        p.rect_filled(glow,
-            egui::epaint::CornerRadiusF32 { nw: 0.0, ne: 0.0, sw: r - 1.5, se: r - 1.5 },
-            Color32::from_rgba_premultiplied(
-                FUTURE_GLOW.r(), FUTURE_GLOW.g(), FUTURE_GLOW.b(), glow_op));
-    }
-
-    // Top specular cap — very bright, hallmark of polished future
-    let hl_op = (215.0 * (1.0 - press_t * 0.55)) as u8;
-    if hl_op > 0 {
-        let hl = Rect::from_min_size(
-            draw_rect.min + vec2(1.5, 1.0),
-            vec2(draw_rect.width() - 3.0, r * 0.72),
-        );
-        p.rect_filled(hl,
-            egui::epaint::CornerRadiusF32 { nw: r - 1.5, ne: r - 1.5, sw: r * 0.25, se: r * 0.25 },
-            Color32::from_rgba_premultiplied(215, 228, 255, hl_op));
-    }
-
-    // Iridescent rainbow stripe — the signature future sheen
-    draw_irid_stripe(p, draw_rect, r, 1.0 - press_t * 0.65);
-
-    // Etched dark border
-    p.rect_stroke(draw_rect, r, Stroke::new(1.0,
-        Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
+    draw_future_pill_base(ui.ctx(), p, draw_rect, rect, press_t, hover_t);
 
     push_y
 }
@@ -293,7 +335,7 @@ pub fn draw_orb_btn(
     r: f32,
     _base_color: Color32, // ignored — Future always uses FUTURE_BODY
     symbol: &str,
-    group_hover_t: Option<f32>,
+    _group_hover_t: Option<f32>,
 ) {
     if !ui.is_rect_visible(resp.rect) { return; }
 
@@ -301,11 +343,10 @@ pub fn draw_orb_btn(
     let press_t = ui.ctx().animate_value_with_time(
         resp.id.with("press"), if pressed { 1.0 } else { 0.0 }, 0.05,
     );
-    let _hover_t = group_hover_t.unwrap_or_else(|| {
-        ui.ctx().animate_value_with_time(
-            resp.id.with("hover"), if resp.hovered() { 1.0 } else { 0.0 }, 0.1,
-        )
-    });
+    // Ignore grouped hover; make each light up individually
+    let _hover_t = ui.ctx().animate_value_with_time(
+        resp.id.with("hover"), if resp.hovered() { 1.0 } else { 0.0 }, 0.1,
+    );
 
     let center = resp.rect.center();
     let push_y = press_t * 1.5;
@@ -320,15 +361,15 @@ pub fn draw_orb_btn(
     }
 
     // Body
-    let darken = 1.0 - press_t * 0.35;
+    let darken = 1.0 - press_t * 0.35 + _hover_t * 0.25;
     let bc = FUTURE_BODY;
     let body = Color32::from_rgb(
-        (bc.r() as f32 * darken) as u8,
-        (bc.g() as f32 * darken) as u8,
-        (bc.b() as f32 * darken) as u8,
+        ((bc.r() as f32 * darken).min(255.0)) as u8,
+        ((bc.g() as f32 * darken).min(255.0)) as u8,
+        ((bc.b() as f32 * darken).min(255.0)) as u8,
     );
     p.circle_filled(dc, r, body);
-
+    
     // Bottom glow — blue-shifted, matches future pill
     let lr = (bc.r() as f32 * darken * 1.55).min(255.0) as u8;
     let lg = (bc.g() as f32 * darken * 1.65).min(255.0) as u8;
@@ -336,18 +377,22 @@ pub fn draw_orb_btn(
     p.circle_filled(dc + vec2(0.0, 1.5), r - 1.5, Color32::from_rgb(lr, lg, lb));
 
     // Top specular — blue-tinted, matches future pill
-    let hl = (210.0 * (1.0 - press_t * 0.5)) as u8;
-    if hl > 0 {
+    let hl_op = (210.0 * (1.0 - press_t * 0.5) * (1.0 + _hover_t * 0.05)).min(255.0) as u8;
+    if hl_op > 0 {
         let hl_rect = Rect::from_min_size(dc - vec2(r - 1.5, r - 1.0),
             vec2((r - 1.5) * 2.0, r * 0.78));
         p.rect_filled(hl_rect, r,
-            Color32::from_rgba_premultiplied(215, 228, 255, hl));
+            Color32::from_rgba_premultiplied(215, 228, 255, hl_op));
     }
+
+    // Add digital static localized to the circle
+    let draw_rect = Rect::from_center_size(dc, vec2(r * 2.0, r * 2.0));
+    draw_holographic_hover(ui, p, draw_rect, r, _hover_t);
 
     // Symbols — drawn as text, sunken/embossed
     {
         let font = egui::FontId::proportional(16.0);
-        let hl_col = Color32::from_rgba_premultiplied(255, 255, 255, 150);
+        let hl_col = Color32::from_rgba_premultiplied(255, 255, 255, 180);
         let ink_col = Color32::BLACK;
 
         let mut pos_offset = egui::vec2(0.0, 0.0);
@@ -355,10 +400,9 @@ pub fn draw_orb_btn(
             pos_offset.y -= 3.5; // Shift the period up from the baseline to center it visually
         }
 
-        for &d in &[egui::vec2(0.0, 0.0), egui::vec2(0.5, 0.0), egui::vec2(0.0, 0.5), egui::vec2(0.5, 0.5)] {
-            p.text(dc + pos_offset + egui::vec2(0.0, 1.0) + d, egui::Align2::CENTER_CENTER, symbol, font.clone(), hl_col);
-            p.text(dc + pos_offset + d, egui::Align2::CENTER_CENTER, symbol, font.clone(), ink_col);
-        }
+        // Just one crisp highlight exactly 1px down for a clean glass emboss (no blurry 4x overlay veil)
+        p.text(dc + pos_offset + egui::vec2(0.0, 1.0), egui::Align2::CENTER_CENTER, symbol, font.clone(), hl_col);
+        p.text(dc + pos_offset, egui::Align2::CENTER_CENTER, symbol, font.clone(), ink_col);
     }
 
     // Outline
@@ -430,12 +474,17 @@ pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
         let shift_y = draw_future_pill(ui, &response, rect);
         let text_pos = ui.layout().align_size_within_rect(galley.size(), rect.shrink(2.0)).min
             + vec2(0.0, shift_y);
-        let shadow_a = (110.0 * (1.0 - shift_y / 1.5)) as u8;
+        let hover_t = ui.ctx().animate_value_with_time(
+            response.id.with("ch_hover"),
+            if response.hovered() { 1.0 } else { 0.0 },
+            0.12,
+        );
+        let shadow_a = (110.0 * (1.0 - shift_y / 1.5) * (1.0 - hover_t)).max(0.0) as u8;
         if shadow_a > 0 {
             ui.painter().galley(text_pos + vec2(0.0, 1.0),
                 ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(24.0),
-                    Color32::WHITE),
-                Color32::BLACK);
+                    Color32::from_white_alpha(shadow_a)),
+                Color32::from_white_alpha(shadow_a));
         }
         ui.painter().galley(text_pos, galley, Color32::BLACK);
     }
@@ -451,15 +500,20 @@ pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> 
     if ui.is_rect_visible(rect) {
         let shift_y = draw_future_pill(ui, &response, rect);
         let c = rect.center();
-        let pos = pos2(c.x - gw / 2.0, c.y - gh / 2.0 - 1.5 + shift_y);
-        let shadow_a = (110.0 * (1.0 - shift_y / 1.5)) as u8;
+        let pos = pos2(c.x - gw / 2.0, c.y - gh / 2.0 - 2.5 + shift_y);
+        let hover_t = ui.ctx().animate_value_with_time(
+            response.id.with("ch_hover"),
+            if response.hovered() { 1.0 } else { 0.0 },
+            0.12,
+        );
+        let shadow_a = (110.0 * (1.0 - shift_y / 1.5) * (1.0 - hover_t)).max(0.0) as u8;
         if shadow_a > 0 {
             ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
                 pos: pos + vec2(0.0, 1.0),
-                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::WHITE),
+                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::from_white_alpha(shadow_a)),
                 underline: egui::Stroke::NONE,
-                fallback_color: Color32::WHITE,
-                override_text_color: Some(Color32::WHITE),
+                fallback_color: Color32::from_white_alpha(shadow_a),
+                override_text_color: Some(Color32::from_white_alpha(shadow_a)),
                 opacity_factor: 1.0,
                 angle: 0.0,
             }));
@@ -487,15 +541,20 @@ pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32,
         let shift_y = draw_future_pill(ui, &response, rect);
         let s = angle.signum();
         let c = rect.center();
-        let pos = pos2(c.x + s * (gh * 0.42 + 3.0), c.y - s * gw / 2.0 + shift_y);
-        let shadow_a = (110.0 * (1.0 - shift_y / 1.5)) as u8;
+        let pos = pos2(c.x + s * (gh / 2.0 + 2.0), c.y - s * gw / 2.0 + shift_y);
+        let hover_t = ui.ctx().animate_value_with_time(
+            response.id.with("ch_hover"),
+            if response.hovered() { 1.0 } else { 0.0 },
+            0.12,
+        );
+        let shadow_a = (110.0 * (1.0 - shift_y / 1.5) * (1.0 - hover_t)).max(0.0) as u8;
         if shadow_a > 0 {
             ui.painter().add(egui::Shape::Text(egui::epaint::TextShape {
                 pos: pos + vec2(0.0, 1.0),
-                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(24.0), Color32::WHITE),
+                galley: ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::from_white_alpha(shadow_a)),
                 underline: egui::Stroke::NONE,
-                fallback_color: Color32::WHITE,
-                override_text_color: Some(Color32::WHITE),
+                fallback_color: Color32::from_white_alpha(shadow_a),
+                override_text_color: Some(Color32::from_white_alpha(shadow_a)),
                 opacity_factor: 1.0,
                 angle,
             }));
@@ -523,6 +582,23 @@ pub struct Future;
 impl crate::ui::theme::ThemeProvider for Future {
     fn apply_theme(&self, ctx: &Context) { apply_theme(ctx); }
     fn draw_sunken(&self, painter: &Painter, rect: Rect) { draw_inset(painter, rect); }
+
+    fn draw_space_strategy_bg(&self, ui: &mut Ui, rect: Rect) {
+        draw_inset(ui.painter(), rect);
+        
+        // Faded scan lines for the Space Strategy chart background (~10% of typical brightness)
+        // Egui's `from_rgba_premultiplied` physically adds the RGB values. We must lower them to fade.
+        let color = Color32::from_rgba_premultiplied(8, 8, 8, 1);
+        let mut y = rect.min.y;
+        while y < rect.max.y {
+            ui.painter().line_segment(
+                [pos2(rect.min.x, y), pos2(rect.max.x, y)],
+                Stroke::new(1.0, color),
+            );
+            y += 3.0;
+        }
+    }
+
     fn section_toggle_btn(&self, ui: &mut Ui) -> Response { section_toggle_btn(ui) }
     fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32) -> Response { key_cap_small(ui, text, side, font_size) }
     fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32) -> Response { key_cap_small_rotated(ui, text, angle, side, font_size) }
@@ -595,6 +671,7 @@ impl crate::ui::theme::ThemeProvider for Future {
 
         p.rect_filled(draw_rect, r, active);
 
+        let glow_op = if is_down { 100 } else if is_hov { 200 } else { 180 };
         let lr = (c_r as f32 * 1.5).min(255.0) as u8;
         let lg = (c_g as f32 * 1.5).min(255.0) as u8;
         let lb = (c_b as f32 * 1.5).min(255.0) as u8;
@@ -603,7 +680,7 @@ impl crate::ui::theme::ThemeProvider for Future {
             draw_rect.max - egui::vec2(1.5, 1.5),
         );
         p.rect_filled(glow_rect, egui::epaint::CornerRadiusF32 { nw: 0.0, ne: 0.0, sw: r - 1.5, se: r - 1.5 },
-            Color32::from_rgba_premultiplied(lr, lg, lb, 180));
+            Color32::from_rgba_premultiplied(lr, lg, lb, glow_op));
 
         let hl_op = if is_down { 110 } else { 220 };
         let hl_rect = Rect::from_min_size(
@@ -613,6 +690,13 @@ impl crate::ui::theme::ThemeProvider for Future {
         p.rect_filled(hl_rect,
             egui::epaint::CornerRadiusF32 { nw: r - 1.5, ne: r - 1.5, sw: r * 0.3, se: r * 0.3 },
             Color32::from_rgba_premultiplied(255, 255, 255, hl_op));
+
+        let hover_t = ui.ctx().animate_value_with_time(
+            ui.id().with("thumb_hover").with(handle_rect.center().x as i32),
+            if is_hov { 1.0 } else { 0.0 },
+            0.12,
+        );
+        draw_holographic_hover(ui.ctx(), p, draw_rect, r, hover_t);
 
         p.rect_stroke(draw_rect, r, Stroke::new(1.0,
             Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
@@ -661,6 +745,14 @@ impl crate::ui::theme::ThemeProvider for Future {
             );
             p.rect_filled(hl_rect, 2.0,
                 Color32::from_rgba_premultiplied(255, 255, 255, hl_op));
+
+            let target_active = if is_hovered || is_down { 1.0 } else { 0.0 };
+            let active_t = ui.ctx().animate_value_with_time(
+                ui.id().with(fill_rect.min.x as i32).with("gauge_active"),
+                target_active,
+                0.12,
+            );
+            draw_digital_static_grid(ui.ctx(), p, fill_rect, 2.0, active_t);
         }
     }
     fn text_field_edit(&self, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response {
@@ -718,54 +810,9 @@ impl crate::ui::theme::ThemeProvider for Future {
 
         let push_y = press_t * 1.5;
         let draw_rect = rect.translate(egui::vec2(0.0, push_y));
-        let r = rect.height() / 2.0;
         let p = ui.painter();
 
-        let sh_op = (80.0 * (1.0 - press_t)) as u8;
-        if sh_op > 0 {
-            p.rect_filled(
-                rect.translate(egui::vec2(0.0, 1.5)),
-                r + 0.5,
-                Color32::from_rgba_premultiplied(0, 0, 0, sh_op),
-            );
-        }
-
-        let darken = 1.0 - press_t * 0.35 + hover_t * 0.12;
-        let c = FUTURE_BODY;
-        let body = Color32::from_rgb(
-            (c.r() as f32 * darken) as u8,
-            (c.g() as f32 * darken) as u8,
-            (c.b() as f32 * darken) as u8,
-        );
-        p.rect_filled(draw_rect, r, body);
-
-        let glow_op = (155.0 * (1.0 - press_t * 0.65)) as u8;
-        if glow_op > 0 {
-            let glow = Rect::from_min_max(
-                egui::pos2(draw_rect.min.x + 1.5, draw_rect.center().y),
-                draw_rect.max - egui::vec2(1.5, 1.5),
-            );
-            p.rect_filled(glow,
-                egui::epaint::CornerRadiusF32 { nw: 0.0, ne: 0.0, sw: r - 1.5, se: r - 1.5 },
-                Color32::from_rgba_premultiplied(
-                    FUTURE_GLOW.r(), FUTURE_GLOW.g(), FUTURE_GLOW.b(), glow_op));
-        }
-
-        let hl_op = (215.0 * (1.0 - press_t * 0.55)) as u8;
-        if hl_op > 0 {
-            let hl = Rect::from_min_size(
-                draw_rect.min + egui::vec2(1.5, 1.0),
-                egui::vec2(draw_rect.width() - 3.0, r * 0.72),
-            );
-            p.rect_filled(hl,
-                egui::epaint::CornerRadiusF32 { nw: r - 1.5, ne: r - 1.5, sw: r * 0.25, se: r * 0.25 },
-                Color32::from_rgba_premultiplied(215, 228, 255, hl_op));
-        }
-
-        draw_irid_stripe(p, draw_rect, r, 1.0 - press_t * 0.65);
-
-        p.rect_stroke(draw_rect, r, Stroke::new(1.0,
-            Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
+        draw_future_pill_base(ui.ctx(), p, draw_rect, rect, press_t, hover_t);
 
         push_y
     }
@@ -781,10 +828,87 @@ impl crate::ui::theme::ThemeProvider for Future {
         } else if !is_hovered {
             p.rect_stroke(rect, r, Stroke::new(1.0,
                 Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
+        } else {
+            p.rect_stroke(rect, r, Stroke::new(1.0,
+                Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
+            draw_holographic_hover(p.ctx(), p, rect, r, 1.0);
         }
     }
 
     fn chart_bg(&self) -> egui::Color32 {
         egui::Color32::from_rgb(8, 8, 12)
     }
+
+    fn tracker_color(&self) -> egui::Color32 {
+        TEXT
+    }
 }
+
+// ── Digital Static Grid (Volume Slider) ───────────────────────────────────────
+
+pub fn draw_digital_static_grid(ctx: &egui::Context, p: &egui::Painter, draw_rect: egui::Rect, r: f32, hover_t: f32) {
+    if hover_t <= 0.01 { return; }
+    ctx.request_repaint();
+    let t = (ctx.input(|i| i.time) * 12.0) as u32; // 12 FPS grid step
+    let grid_size: f32 = 3.0; // 3x3 blocks
+    let min_x = draw_rect.min.x + 1.0;
+    let max_x = draw_rect.max.x - 1.0;
+    let min_y = draw_rect.min.y + 1.0;
+    let max_y = draw_rect.max.y - 1.0;
+    let is_horizontal = draw_rect.width() >= draw_rect.height();
+    let cx1 = if is_horizontal { draw_rect.min.x + r } else { draw_rect.center().x };
+    let cx2 = if is_horizontal { draw_rect.max.x - r } else { draw_rect.center().x };
+    let cy1 = if !is_horizontal { draw_rect.min.y + r } else { draw_rect.center().y };
+    let cy2 = if !is_horizontal { draw_rect.max.y - r } else { draw_rect.center().y };
+    let r_sq = (r - 1.0) * (r - 1.0);
+    let alpha_mult = hover_t * 0.8;
+    let mut y = min_y;
+    while y < max_y {
+        let mut x = min_x;
+        while x < max_x {
+            let cell_cx = x + grid_size * 0.5;
+            let cell_cy = y + grid_size * 0.5;
+            let mut inside = true;
+            if is_horizontal {
+                if cell_cx < cx1 {
+                    let d = (cell_cx - cx1) * (cell_cx - cx1) + (cell_cy - cy1) * (cell_cy - cy1);
+                    if d > r_sq { inside = false; }
+                } else if cell_cx > cx2 {
+                    let d = (cell_cx - cx2) * (cell_cx - cx2) + (cell_cy - cy1) * (cell_cy - cy1);
+                    if d > r_sq { inside = false; }
+                }
+            } else {
+                if cell_cy < cy1 {
+                    let d = (cell_cx - cx1) * (cell_cx - cx1) + (cell_cy - cy1) * (cell_cy - cy1);
+                    if d > r_sq { inside = false; }
+                } else if cell_cy > cy2 {
+                    let d = (cell_cx - cx1) * (cell_cx - cx1) + (cell_cy - cy2) * (cell_cy - cy2);
+                    if d > r_sq { inside = false; }
+                }
+            }
+            if inside {
+                let ix = (x * 13.0) as u32;
+                let iy = (y * 17.0) as u32;
+                let mut seed = ix.wrapping_mul(0x9E3779B9).wrapping_add(iy.wrapping_mul(0xC2B2AE35)).wrapping_add(t.wrapping_mul(0x85EBCA6B));
+                seed ^= seed >> 13;
+                seed = seed.wrapping_mul(0xC2B2AE35);
+                seed ^= seed >> 16;
+                // Elegant sparse static distribution
+                if seed % 10 < 5 {
+                    let tc = ((x - draw_rect.min.x) / draw_rect.width().max(1.0)).clamp(0.0, 1.0);
+                    let col = match (seed / 10) % 5 {
+                        0 | 1 | 2 => irid_color(tc),
+                        3 => egui::Color32::WHITE,
+                        _ => egui::Color32::from_gray(140),
+                    };
+                    let col_alpha = egui::Color32::from_rgba_premultiplied((col.r() as f32 * alpha_mult) as u8, (col.g() as f32 * alpha_mult) as u8, (col.b() as f32 * alpha_mult) as u8, (255.0 * alpha_mult) as u8);
+                    let cell = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(grid_size.min(max_x - x), grid_size.min(max_y - y)));
+                    p.rect_filled(cell, 0.0, col_alpha);
+                }
+            }
+            x += grid_size;
+        }
+        y += grid_size;
+    }
+}
+

@@ -84,7 +84,6 @@ pub fn slider_symlog_f64(
     value: &mut f64,
     max_abs: f64,
     text: &str,
-    _fmt: fn(f64) -> String,
 ) -> egui::Response {
     let mut root_response = ui.allocate_response(egui::vec2(0.0, 0.0), egui::Sense::hover());
     ui.horizontal(|ui| {
@@ -113,6 +112,7 @@ pub fn slider_symlog_f64(
 }
 
 /// A standard linear slider mapped to the application's theme painter.
+#[allow(dead_code)]
 pub fn slider_f32(
     theme: &dyn ThemeProvider,
     ui: &mut egui::Ui,
@@ -242,6 +242,7 @@ pub fn slider_fill_f32(
 }
 // ── Shared Button & KeyCap Engine ─────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub fn button(theme: &dyn ThemeProvider, ui: &mut Ui, text: &str) -> Response {
     button_w(theme, ui, text, 0.0)
 }

@@ -1,4 +1,5 @@
 //! Rectangle theme
+#![allow(dead_code)]
 
 use egui::{Color32, Stroke, CornerRadius, Margin, Vec2, Context, Visuals, Painter, Response, Ui, FontId, Sense};
 use crate::ui::{GAP_MD, GAP_SM, GAP_XS, ResponseExt};
@@ -100,28 +101,37 @@ pub fn text_field_edit(ui: &mut Ui, text: &mut String, font_size: f32, height: f
 }
 
 pub fn section_toggle_btn(ui: &mut Ui) -> Response {
-    let (btn_rect, btn_resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), egui::Sense::click());
+    let r = 6.0f32;
+    let (btn_rect, btn_resp) = ui.allocate_exact_size(egui::vec2(r * 2.0 + 2.0, r * 2.0 + 2.0), egui::Sense::click());
     if ui.is_rect_visible(btn_rect) {
         let is_down = btn_resp.is_pointer_button_down_on();
         let is_hov  = btn_resp.hovered();
-        let bg = TERM_BG;
         let fg = TERM_GREEN;
 
-        ui.painter().rect_filled(btn_rect, egui::CornerRadius::ZERO, bg);
-        ui.painter().rect_stroke(btn_rect, egui::CornerRadius::ZERO, if is_down || is_hov { Stroke::NONE } else { Stroke::new(1.0, fg) }, egui::StrokeKind::Outside);
+        // Border only at rest - use Inside stroke so it doesn't expand into the label's space
+        if !is_hov && !is_down {
+            ui.painter().rect_stroke(btn_rect, egui::CornerRadius::ZERO, egui::Stroke::new(1.0, fg), egui::StrokeKind::Inside);
+        }
+        
+        // No fill on hover (requested "no fill")
 
         let offset = if is_down { 1.0 } else { 0.0 };
-        let text_pos = btn_rect.center() + egui::vec2(offset, offset);
-        ui.painter().text(text_pos, egui::Align2::CENTER_CENTER, ".", FontId::monospace(11.0), fg);
+        let dot_color = fg;
+        let text_pos = btn_rect.center() + egui::vec2(offset, offset - 2.0); // nudge up optically
+        ui.painter().text(text_pos, egui::Align2::CENTER_CENTER, ".", FontId::monospace(11.0), dot_color);
     }
     btn_resp
+}
+
+pub fn section_label(ui: &mut Ui, text: &str) -> Response {
+    ui.label(egui::RichText::new(text).strong().color(TERM_GREEN))
 }
 
 pub fn collapsible_header(ui: &mut Ui, title: &str, _is_expanded: bool) -> bool {
     let mut clicked = false;
     ui.horizontal(|ui| {
         let btn_resp = section_toggle_btn(ui).hand();
-        let lbl_resp = ui.label(egui::RichText::new(title).strong().color(TERM_GREEN))
+        let lbl_resp = section_label(ui, title)
             .hand().interact(Sense::click());
 
         if btn_resp.clicked() || lbl_resp.clicked() { clicked = true; }
@@ -189,12 +199,11 @@ pub fn key_cap(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> Respon
         let is_down = response.is_pointer_button_down_on();
         let is_hov  = response.hovered();
         let fg = TERM_GREEN;
-        if is_down {
-            p.rect_filled(rect, 0.0, TERM_GREEN.linear_multiply(0.2));
-        } else if !is_hov {
+        if !is_down && !is_hov {
             draw_outset(p, rect);
         }
-        let text_pos = rect.center() - galley.size() * 0.5;
+        let push = if is_down { egui::vec2(1.0, 1.0) } else { egui::Vec2::ZERO };
+        let text_pos = rect.center() - galley.size() * 0.5 - egui::vec2(0.0, 2.5) + push;
         p.galley(text_pos, galley.clone(), fg);
         p.galley(text_pos + egui::vec2(1.0, 0.0), galley, fg);
     }
@@ -274,9 +283,9 @@ pub fn key_cap_rotated(ui: &mut egui::Ui, text: &str, angle: f32, min_side: f32,
         let p = ui.painter();
         let is_down = response.is_pointer_button_down_on();
         let is_hov  = response.hovered();
-        let bg = TERM_BG;
+        let _bg = TERM_BG;
         let fg = TERM_GREEN;
-        p.rect_filled(rect, 0.0, bg);
+        // Rect theme key caps are hollow
         if !(is_down || is_hov) { crate::ui::rect::draw_outset(p, rect); }
 
         let c = rect.center();
@@ -284,7 +293,8 @@ pub fn key_cap_rotated(ui: &mut egui::Ui, text: &str, angle: f32, min_side: f32,
         let gh = galley.size().y;
         let s = angle.signum();
 
-        let pos = egui::pos2(c.x + s * (gh * 0.42 + 3.0), c.y - s * gw / 2.0);
+        let push = if is_down { egui::vec2(1.0, 1.0) } else { egui::Vec2::ZERO };
+        let pos = egui::pos2(c.x + s * (gh / 2.0 + 2.0), c.y - s * gw / 2.0) + push;
 
         let make_shape = |galley: std::sync::Arc<egui::Galley>, offset: egui::Vec2| egui::Shape::Text(egui::epaint::TextShape {
             pos: pos + offset,
@@ -308,6 +318,39 @@ pub struct Rect;
 impl crate::ui::theme::ThemeProvider for Rect {
     fn apply_theme(&self, ctx: &Context) { apply_theme(ctx); }
     fn draw_sunken(&self, painter: &Painter, rect: egui::Rect) { draw_sunken(painter, rect); }
+
+    fn draw_space_strategy_bg(&self, ui: &mut Ui, rect: egui::Rect) {
+        self.draw_sunken(ui.painter(), rect);
+        
+        let painter = ui.painter();
+        let grid_step = 20.0;
+        let line_color = Color32::from_rgba_premultiplied(0, 10, 0, 10); // very faint CRT terminal green
+        
+        let cx = rect.center().x;
+        let mut i = 0.0;
+        while cx + i <= rect.max.x || cx - i >= rect.min.x {
+            if cx + i <= rect.max.x {
+                painter.line_segment([egui::pos2(cx + i, rect.min.y), egui::pos2(cx + i, rect.max.y)], Stroke::new(1.0, line_color));
+            }
+            if i > 0.0 && cx - i >= rect.min.x {
+                painter.line_segment([egui::pos2(cx - i, rect.min.y), egui::pos2(cx - i, rect.max.y)], Stroke::new(1.0, line_color));
+            }
+            i += grid_step;
+        }
+        
+        let cy = rect.center().y;
+        let mut j = 0.0;
+        while cy + j <= rect.max.y || cy - j >= rect.min.y {
+            if cy + j <= rect.max.y {
+                painter.line_segment([egui::pos2(rect.min.x, cy + j), egui::pos2(rect.max.x, cy + j)], Stroke::new(1.0, line_color));
+            }
+            if j > 0.0 && cy - j >= rect.min.y {
+                painter.line_segment([egui::pos2(rect.min.x, cy - j), egui::pos2(rect.max.x, cy - j)], Stroke::new(1.0, line_color));
+            }
+            j += grid_step;
+        }
+    }
+
     fn section_toggle_btn(&self, ui: &mut Ui) -> Response { section_toggle_btn(ui) }
     fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32) -> Response { key_cap(ui, text, side, font_size) }
     fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32) -> Response { key_cap_rotated(ui, text, angle, side, font_size) }
@@ -316,33 +359,52 @@ impl crate::ui::theme::ThemeProvider for Rect {
         let p = ui.painter();
         draw_sunken(p, track_rect);
 
-        p.rect_filled(
-            egui::Rect::from_min_max(
-                egui::pos2(center_x - 1.0, track_rect.min.y),
-                egui::pos2(center_x + 1.0, track_rect.max.y)
-            ),
-            0.0,
-            TERM_BG,
-        );
+        let cy = track_rect.center().y;
+        
+        // A vertical "door" with a retro grid pattern on it, shifted for an isometric popup look
+        // Same size as the door marker on Dew theme
+        let w = 3.0; // Same as Dew's w = 3.0
+        let h = 7.0; // Same as Dew's h = 7.0
+        let shift = 1.5; // Same as Dew's shift = 1.5
 
+        let tl = egui::pos2(center_x - w, cy - h);
+        let tr = egui::pos2(center_x + w, cy - h + shift);
+        let br = egui::pos2(center_x + w, cy + h + shift);
+        let bl = egui::pos2(center_x - w, cy + h);
+
+        use egui::Shape;
+        
+        // Solid dark background to block the track, and glowing outline
+        p.add(Shape::convex_polygon(
+            vec![tl, tr, br, bl],
+            TERM_BG.linear_multiply(0.8),
+            Stroke::new(1.0, TERM_GREEN)
+        ));
+        
+        // Draw the inner grid lines on the "door"
+        let line_color = TERM_GREEN.linear_multiply(0.5);
+        
+        // Vertical center line
         p.line_segment(
-            [egui::pos2(center_x - 1.0, track_rect.min.y - GAP_SM), egui::pos2(center_x - 1.0, track_rect.max.y + GAP_SM)],
-            Stroke::new(1.0, TERM_GREEN),
+            [egui::pos2(center_x, cy - h + shift * 0.5), egui::pos2(center_x, cy + h + shift * 0.5)],
+            Stroke::new(1.0, line_color),
         );
+        
+        // Horizontal center line (perfectly bisecting the isometric angles)
         p.line_segment(
-            [egui::pos2(center_x, track_rect.min.y - GAP_SM), egui::pos2(center_x, track_rect.max.y + GAP_SM)],
-            Stroke::new(1.0, TERM_GREEN),
-        );
-        p.line_segment(
-            [egui::pos2(center_x + 1.0, track_rect.min.y - GAP_SM), egui::pos2(center_x + 1.0, track_rect.max.y + GAP_SM)],
-            Stroke::new(1.0, TERM_GREEN),
+            [egui::pos2(center_x - w, cy), egui::pos2(center_x + w, cy + shift)],
+            Stroke::new(1.0, line_color),
         );
     }
 
-    fn paint_slider_thumb(&self, ui: &mut Ui, handle_rect: egui::Rect, _is_down: bool, _is_hov: bool) {
+    fn paint_slider_thumb(&self, ui: &mut Ui, handle_rect: egui::Rect, is_down: bool, is_hov: bool) {
         let p = ui.painter();
-        p.rect_filled(handle_rect, 0.0, TERM_BG);
-        p.rect_stroke(handle_rect, CornerRadius::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
+        if is_hov || is_down {
+            p.rect_filled(handle_rect, 0.0, TERM_GREEN);
+        } else {
+            p.rect_filled(handle_rect, 0.0, TERM_BG);
+            p.rect_stroke(handle_rect, CornerRadius::ZERO, Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
+        }
     }
 
     fn paint_slider_text(&self, _ui: &mut Ui, _text: &str) {
@@ -364,7 +426,7 @@ impl crate::ui::theme::ThemeProvider for Rect {
             p.rect_filled(fill_rect, 0.0, fill_color);
         }
     }
-    fn section_label(&self, ui: &mut Ui, text: &str) -> Response { ui.label(text) }
+    fn section_label(&self, ui: &mut Ui, text: &str) -> Response { section_label(ui, text) }
     fn text_field_edit(&self, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response { text_field_edit(ui, text, font_size, height) }
 
     fn button_text_color(&self) -> egui::Color32 {
@@ -373,13 +435,10 @@ impl crate::ui::theme::ThemeProvider for Rect {
 
     fn paint_button(&self, ui: &mut egui::Ui, rect: egui::Rect, is_down: bool, is_hovered: bool) -> f32 {
         let p = ui.painter();
-        if is_down {
-            return 1.0;
-        } else if !is_hovered {
+        if !is_down && !is_hovered {
             draw_outset(p, rect);
-            return 0.0;
         }
-        0.0
+        if is_down { 1.0 } else { 0.0 }
     }
 
     fn key_cap_text_color(&self) -> egui::Color32 {
@@ -398,5 +457,9 @@ impl crate::ui::theme::ThemeProvider for Rect {
 
     fn chart_axis_color(&self) -> egui::Color32 {
         TERM_GREEN.linear_multiply(0.6)
+    }
+
+    fn remove_tracker_border_on_hover(&self) -> bool {
+        true
     }
 }

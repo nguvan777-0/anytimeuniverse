@@ -1,9 +1,6 @@
 #![allow(clippy::type_complexity)]
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::empty_line_after_doc_comments)]
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_imports)]
 mod engine;
 mod ui;
 
@@ -93,7 +90,7 @@ fn main() {
 
     // ascii — skip GPU init, banner, and window entirely
     if ascii_mode {
-        let wave_colors = ui::espresso_walk::generate(3, &seed, ui::espresso_walk::Palette::Bright);
+        let wave_colors = ui::espresso_walk::generate(3, &seed, ui::espresso_walk::Palette::Wide);
         let colors: [[f64; 3]; 3] = std::array::from_fn(|i| {
             let c = wave_colors[i];
             [c.r() as f64 / 255.0, c.g() as f64 / 255.0, c.b() as f64 / 255.0]

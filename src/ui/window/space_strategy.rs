@@ -19,13 +19,11 @@ if self.show_strategy {
     ui.add_space(GAP_XS);
 
     let plot_w = ui.available_width();
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(plot_w, 200.0), egui::Sense::hover());
-    
-    // Background
-    ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, self.theme.provider().chart_bg());
-    self.theme.provider().draw_sunken(ui.painter(), rect);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(plot_w, 200.0), egui::Sense::click_and_drag());
+
+    self.theme.provider().draw_space_strategy_bg(ui, rect);
 
     // Draw the parameter space plot
-    self.strategy_engine.draw(ui, rect, &self.wave_colors, self.theme.provider().chart_axis_color());
+    self.strategy_engine.draw(ui, rect, &response, &self.wave_colors, self.theme.provider().chart_axis_color(), self.theme.provider());
 }
 }

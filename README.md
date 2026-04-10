@@ -4,9 +4,11 @@ A cross-platform simulation in Rust where time is the direct input. Step to any 
 
 Three wave branches run against that field. Each accumulates energy, copies parameters forward with drift, or phases in and out. You can watch the visualization forward, rewind, or jump to any moment.
 
-![screenshot](https://github.com/nguvan777-0/anytimeuniverse/releases/download/screenshots/anytimeuniverse-TKQg7X9w-98154817436855255040_0.png)
+![screenshot](https://github.com/nguvan777-0/anytimeuniverse/releases/download/v0.3.0/anytimeuniverse-TKQg7X9w-40792701337273597952_0.png)
 
-![screenshot](https://github.com/nguvan777-0/anytimeuniverse/releases/download/screenshots/anytimeuniverse-BrJF2t2t-590112_2.png)
+![screenshot](https://github.com/nguvan777-0/anytimeuniverse/releases/download/v0.3.0/anytimeuniverse-yHxJ7gPS-579521556646169804800_0.png)
+
+![screenshot](https://github.com/nguvan777-0/anytimeuniverse/releases/download/v0.3.0/anytimeuniverse-C7Qw2Jt1-2765314241196514816_0.png)
 
 ```bash
 cargo run                        # GPU: Hardware-accelerated real-time field

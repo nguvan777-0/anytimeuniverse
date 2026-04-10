@@ -36,6 +36,7 @@ pub fn build(
     ColorData { data: flat }
 }
 
+#[allow(dead_code)]
 pub fn apply(cd: &ColorData, weights: &[f32; 14], first_wave_id: usize) -> [f32; 3] {
     let id = first_wave_id % 12;
     let anchor = cd.data[id];

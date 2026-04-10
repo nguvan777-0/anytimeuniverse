@@ -9,6 +9,7 @@ use super::triple_buffer::TripleBuffer;
 
 /// CPU representation of the branch projection axes — kept for API compatibility.
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub struct BranchProjectionData {
     pub axis1: [f32; 14],
     pub axis2: [f32; 14],
@@ -32,11 +33,13 @@ pub struct Stats {
 
 
 pub enum Command {
+    #[allow(dead_code)]
     SetSpeed(Duration),
     Pause,
     Resume,
     Reset,
-    /// No-op in analytical mode — kept for window.rs API compatibility.
+    /// No-op in analytical mode — kept for API compatibility.
+    #[allow(dead_code)]
     SetBranchProjection(Box<BranchProjectionData>),
 }
 
@@ -71,8 +74,6 @@ fn run_sim(
 ) {
     let mut tick = 0u32;
     let mut is_paused = false;
-    // Default: 1 tick / 66 ms (~15 tps) — wave_time speed is controlled separately in UI.
-    let mut _speed_limit = Duration::from_millis(66);
     let display_interval = Duration::from_millis(16); // ~60 fps stats push
     let mut last_push = Instant::now();
 
@@ -80,7 +81,7 @@ fn run_sim(
         // Drain the command queue.
         loop {
             match cmd_rx.try_recv() {
-                Ok(Command::SetSpeed(s)) => _speed_limit = s,
+                Ok(Command::SetSpeed(_)) => {} // speed is governed by the UI thread
                 Ok(Command::Pause)       => is_paused = true,
                 Ok(Command::Resume)      => is_paused = false,
                 Ok(Command::Reset) => { tick = 0; }

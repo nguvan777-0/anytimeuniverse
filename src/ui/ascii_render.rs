@@ -12,18 +12,18 @@ const TAU: f64 = std::f64::consts::TAU;
 const RES_TARGET: f64 = PHI - 1.0;
 
 // ── Hash (mirrors shader) ─────────────────────────────────────────────────────
-fn fhash(wave_i: u32, gn: u32, ch: u32) -> f64 {
+fn fhash(wave_i: u32, gn: u64, ch: u32) -> f64 {
     let x = (wave_i as f64) * 97.0 + (gn as f64) * PHI + (ch as f64) * 7.321;
     let v = x.sin() + (x * std::f64::consts::E).sin() * 0.5 + (x * std::f64::consts::PI).sin() * 0.25;
     (v * 1.5).sin() * 0.5 + 0.5
 }
 
-fn gen_param(wave_i: u32, gn: u32, ch: u32) -> f64 {
+fn gen_param(wave_i: u32, gn: u64, ch: u32) -> f64 {
     fhash(wave_i, gn, ch)
 }
 
 // ── Golden Attractor (Resonance) ──────────────────────────────────────────────
-fn gen_resonance(wave_i: u32, gn: u32) -> f64 {
+fn gen_resonance(wave_i: u32, gn: u64) -> f64 {
     fhash(wave_i, gn, 8) // Channel 8 reserved for raw params
 }
 
@@ -38,7 +38,7 @@ fn gen_acc(drift_freq: f64, drift_phase: f64, t: f64, noise: f64) -> f64 {
 }
 
 // ── Memory (mirrors shader) ───────────────────────────────────────────────────
-fn memory(wave_i: u32, gn: u32, ch: u32) -> f64 {
+fn memory(wave_i: u32, gn: u64, ch: u32) -> f64 {
     let own    = gen_param(wave_i, gn, ch);
     let past   = gen_param(wave_i, gn.wrapping_sub(1), ch);
     let amp_n  = 0.3 + gen_param(wave_i, gn, 0) * 2.4;
@@ -56,7 +56,7 @@ fn memory(wave_i: u32, gn: u32, ch: u32) -> f64 {
 // ── Energy (mirrors shader) ───────────────────────────────────────────────────
 const ENERGY_THRESHOLD: f64 = 0.50;
 
-fn wave_energy(wave_i: u32, gn_in: u32) -> f64 {
+fn wave_energy(wave_i: u32, gn_in: u64) -> f64 {
     let n = (gn_in % 256) as f64;
     let alpha   = 2.0 * PHI;
     let beta    = wave_i as f64 * PHI * PI;
@@ -67,13 +67,13 @@ fn wave_energy(wave_i: u32, gn_in: u32) -> f64 {
 }
 
 // ── Branch Projection / Omniscience Samplers ─────────────────────────────────
-pub fn get_gn_at_time(env: &[f32; 24], wave_i: usize, t: f64, noise: f64) -> u32 {
+pub fn get_gn_at_time(env: &[f32; 24], wave_i: usize, t: f64, noise: f64) -> u64 {
     let drift_freq  = env[wave_i * 8 + 5] as f64;
     let drift_phase = env[wave_i * 8 + 6] as f64;
-    gen_acc(drift_freq, drift_phase, t, noise).floor() as u32
+    gen_acc(drift_freq, drift_phase, t, noise).floor() as u64
 }
 
-pub fn get_params(env: &[f32; 24], wave_i: usize, gn: u32) -> [f64; 5] {
+pub fn get_params(env: &[f32; 24], wave_i: usize, gn: u64) -> [f64; 5] {
     let base_amp  = env[wave_i * 8]     as f64;
     let base_freq = env[wave_i * 8 + 1] as f64;
     
@@ -127,6 +127,7 @@ fn fork_center(origin_i: u32, fork_id: u32, t: f64, fork_age: f64) -> [f64; 2] {
 struct WaveSample {
     sin_term: f64,
     cos_freq: f64,
+    #[allow(dead_code)]
     dir:      [f64; 2],
 }
 
@@ -137,7 +138,7 @@ fn sample_wave(
     wave_i: u32, pos: [f64; 2], t: f64, noise: f64,
 ) -> WaveSample {
     let acc  = gen_acc(drift_freq, drift_phase, t, noise);
-    let gn   = acc.floor() as u32;
+    let gn   = acc.floor() as u64;
     let frac = acc.fract();
 
     let amp_a   = amp  * (0.3 + memory(wave_i, gn,                  0) * 2.4);
@@ -205,8 +206,8 @@ fn sample_wave(
     }
 }
 
-fn fork_split_at(fork_i: u32) -> u32 {
-    (fhash(fork_i, 0, 20) * 80.0) as u32 + 5
+fn fork_split_at(fork_i: u32) -> u64 {
+    (fhash(fork_i, 0, 20) * 80.0) as u64 + 5
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -216,7 +217,7 @@ fn sample_fork(
     origin_i: u32, fork_i: u32, pos: [f64; 2], t: f64, noise: f64,
 ) -> WaveSample {
     let acc       = gen_acc(drift_freq, drift_phase, t, noise);
-    let origin_gn = (acc.floor() as u32) % 256;
+    let origin_gn = (acc.floor() as u64) % 256;
     let gn_fork   = (fork_split_at(fork_i)) % 256;
     if origin_gn < gn_fork { return WaveSample { sin_term: 0.0, cos_freq: 0.0, dir: [1.0, 0.0] }; }
 
@@ -428,13 +429,14 @@ fn poll_keys(c: &mut crate::ui::controls::Controls) -> Action {
 }
 
 // ── Wave status line ──────────────────────────────────────────────────────────
+#[allow(dead_code)]
 fn wave_status(env: &[f32; 24], noise: f64, t: f64, wave_colors: &[[f64; 3]; 3], _cols: usize) -> String {
     let mut out = String::new();
     for i in 0..3usize {
         let drift_freq  = env[i*8 + 5] as f64;
         let drift_phase = env[i*8 + 6] as f64;
         let acc = gen_acc(drift_freq, drift_phase, t, noise);
-        let gn  = acc.floor() as u32;
+        let gn  = acc.floor() as u64;
         let energy = wave_energy(i as u32, gn);
 
         let amp_n  = 0.3 + gen_param(i as u32, gn, 0) * 2.4;
@@ -461,6 +463,7 @@ fn wave_status(env: &[f32; 24], noise: f64, t: f64, wave_colors: &[[f64; 3]; 3],
 }
 
 // ── Color river (80 samples of wave prominence history) ───────────────────────
+#[allow(dead_code)]
 fn color_river(env: &[f32; 24], noise: f64, t_now: f64, wave_colors: &[[f64; 3]; 3], cols: usize) -> String {
     let window = 100.0;
     let mut out = String::new();
@@ -474,7 +477,7 @@ fn color_river(env: &[f32; 24], noise: f64, t_now: f64, wave_colors: &[[f64; 3];
             let drift_freq  = env[wi*8 + 5] as f64;
             let drift_phase = env[wi*8 + 6] as f64;
             let acc = gen_acc(drift_freq, drift_phase, t_sample, noise);
-            let gn  = acc.floor() as u32;
+            let gn  = acc.floor() as u64;
             let amp_n = 0.3 + gen_param(wi as u32, gn, 0) * 2.4;
             let freq_n = 0.4 + gen_param(wi as u32, gn, 1) * 1.2;
             let resonance = gen_resonance(wi as u32, gn);
@@ -557,7 +560,7 @@ pub fn run(seed: &str, background_noise: f32, initial_wave_colors: [[f64; 3]; 3]
                     let hash = crate::hash_seed(&current_seed);
                     current_seed = crate::generate_seed(hash);
                     env = crate::ui::window::make_env_data_pub(&current_seed);
-                    let new_colors = crate::ui::espresso_walk::generate(3, &current_seed, crate::ui::espresso_walk::Palette::Bright);
+                    let new_colors = crate::ui::espresso_walk::generate(3, &current_seed, crate::ui::espresso_walk::Palette::Wide);
                     wave_colors = std::array::from_fn(|i| {
                         let c = new_colors[i];
                         [c.r() as f64 / 255.0, c.g() as f64 / 255.0, c.b() as f64 / 255.0]
@@ -605,12 +608,12 @@ pub fn run(seed: &str, background_noise: f32, initial_wave_colors: [[f64; 3]; 3]
                 buf.push('\n');
             }
 
-            let mut wave_data = [(0u32, 0.0f64, 0.0f64, 0.0f64); 3];
+            let mut wave_data = [(0u64, 0.0f64, 0.0f64, 0.0f64); 3];
             for i in 0..3usize {
                 let drift_freq  = env[i*8 + 5] as f64;
                 let drift_phase = env[i*8 + 6] as f64;
                 let acc = gen_acc(drift_freq, drift_phase, s.t, noise);
-                let gn  = acc.floor() as u32;
+                let gn  = acc.floor() as u64;
                 let energy  = wave_energy(i as u32, gn);
                 let amp_n   = 0.3 + gen_param(i as u32, gn, 0) * 2.4;
                 let freq_n  = 0.4 + gen_param(i as u32, gn, 1) * 1.2;
@@ -710,7 +713,7 @@ pub fn run(seed: &str, background_noise: f32, initial_wave_colors: [[f64; 3]; 3]
                     let drift_freq  = env[i*8 + 5] as f64;
                     let drift_phase = env[i*8 + 6] as f64;
                     let acc     = gen_acc(drift_freq, drift_phase, s.t, noise);
-                    let gn      = acc.floor() as u32;
+                    let gn      = acc.floor() as u64;
                     let energy  = wave_energy(i as u32, gn);
                     let amp_n   = 0.3 + gen_param(i as u32, gn, 0) * 2.4;
                     let freq_n  = 0.4 + gen_param(i as u32, gn, 1) * 1.2;
@@ -751,13 +754,13 @@ pub fn run(seed: &str, background_noise: f32, initial_wave_colors: [[f64; 3]; 3]
     }
 }
 
-pub fn get_summary_metrics(env: &[f32; 24], t: f64, noise: f64) -> [(u32, f64, f64, f64); 3] {
+pub fn get_summary_metrics(env: &[f32; 24], t: f64, noise: f64) -> [(u64, f64, f64, f64); 3] {
     let mut out = [(0, 0.0, 0.0, 0.0); 3];
     for i in 0..3usize {
         let drift_freq  = env[i*8 + 5] as f64;
         let drift_phase = env[i*8 + 6] as f64;
         let acc = gen_acc(drift_freq, drift_phase, t, noise);
-        let gn  = acc.floor() as u32;
+        let gn  = acc.floor() as u64;
         let energy  = wave_energy(i as u32, gn);
         let amp_n   = 0.3 + gen_param(i as u32, gn, 0) * 2.4;
         let freq_n  = 0.4 + gen_param(i as u32, gn, 1) * 1.2;

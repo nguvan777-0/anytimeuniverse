@@ -94,20 +94,10 @@ fn memory(wave_i: u32, gn: u32, ch: u32) -> f32 {
     own * (1.0 - carry) + past * carry
 }
 
-/// mirrors gen_acc in the shader.
-fn gen_acc(drift_freq: f32, drift_phase: f32, t: f32, noise: f32) -> f32 {
-    let base   = t * drift_freq * 2.0;
-    let wiggle = noise * 0.5 * (
-        (drift_freq * PHI * t + drift_phase).sin() +
-        (drift_freq * PI  * t + drift_phase * EUL).sin()
-    );
-    (base + wiggle).max(0.0)
-}
-
 /// High-precision f64 version of gen_acc — used in compute() so gn never
 /// saturates at u32::MAX regardless of T magnitude.
 fn gen_acc_f64(drift_freq: f64, drift_phase: f64, t: f64, noise: f64) -> f64 {
-    const PHI_F64: f64 = 1.6180339887498948_f64;
+    const PHI_F64: f64 = 1.618_033_988_749_895_f64;
     let base   = t * drift_freq * 2.0;
     let wiggle = noise * 0.5 * (
         (drift_freq * PHI_F64 * t + drift_phase).sin() +
@@ -201,8 +191,8 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 { a + (b - a) * t }
 /// Returns `[WaveData; 6]`: indices 0–2 are the 3 main waves, 3–5 are their
 /// forks.  Ready to `bytemuck::bytes_of` and upload via `write_buffer`.
 pub fn compute(env: &[f32; 24], t_epoch: i64, t_residual: f64, noise: f32) -> [WaveData; 6] {
-    // f32 t — matches the shader's spatial computations (wave_center, shimmer).
-    let t: f32 = t_epoch as f32 * (TAU / 0.1) + t_residual as f32;
+    // f32 t — kept for potential spatial computations; f64 path is used for precision-sensitive work.
+    let _t: f32 = t_epoch as f32 * (TAU / 0.1) + t_residual as f32;
     // f64 t — used for gn and phase_off so precision is maintained at any T.
     const PERIOD_F64: f64 = std::f64::consts::TAU / 0.1;
     let t_f64: f64 = t_epoch as f64 * PERIOD_F64 + t_residual;

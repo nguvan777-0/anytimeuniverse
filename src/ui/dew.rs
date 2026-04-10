@@ -1,4 +1,5 @@
 //! Dew theme
+#![allow(dead_code)]
 
 use egui::{Color32, Stroke, CornerRadius, Margin, Vec2, Context, Visuals, Rect, Painter, Response, Ui, FontId, Sense};
 use crate::ui::ResponseExt;
@@ -8,6 +9,7 @@ use crate::ui::ResponseExt;
 const PEARL:         Color32 = Color32::from_rgb(235, 235, 235);
 // Dew button faces — square bright Dew blue
 const DEW_BODY:      Color32 = Color32::from_rgb( 50, 130, 240);
+#[allow(dead_code)]
 const DEW_GLOW:      Color32 = Color32::from_rgb(130, 200, 255); // bottom reflection
 const DEW_PRESSED:   Color32 = Color32::from_rgb( 30,  90, 180);
 const DEW_BORDER:    Color32 = Color32::from_rgb( 30,  70, 140);
@@ -17,6 +19,7 @@ const INSET_BORDER:  Color32 = Color32::from_rgb(140, 140, 140);
 const INSET_SHADOW:  Color32 = Color32::from_rgb(180, 180, 180);
 // Button rounding
 const R_SM:   f32 = 4.0;
+#[allow(dead_code)]
 const R_BTN:  f32 = 8.0;
 
 // ── Theme application ──────────────────────────────────────────────────────────
@@ -107,6 +110,7 @@ pub fn draw_inset(painter: &Painter, rect: Rect) {
 }
 
 /// Draw a read-only Dew text field showing `text`, right-aligned.
+#[allow(dead_code)]
 pub fn text_field_label(ui: &mut Ui, text: &str, font_size: f32) {
     let font = egui::FontId::proportional(font_size);
     let galley = ui.painter().layout_no_wrap(text.to_string(), font.clone(), Color32::from_rgb(30, 30, 35));
@@ -230,6 +234,7 @@ pub fn draw_gumdrop(ui: &mut Ui, response: &Response, rect: Rect) -> f32 {
 /// Plain section-header label that never flickers on click.
 /// Paints text directly — bypasses egui's widget state machine so there is
 /// no one-frame "active" style applied when the user clicks.
+#[allow(dead_code)]
 pub fn collapsible_header(ui: &mut Ui, title: &str, _is_expanded: bool) -> bool {
     let mut clicked = false;
     ui.horizontal(|ui| {
@@ -263,7 +268,7 @@ pub fn draw_dot_btn(
     r: f32,
     base_color: Color32,
     symbol: &str,
-    group_hover_t: Option<f32>,
+    _group_hover_t: Option<f32>,
 ) {
     if !ui.is_rect_visible(resp.rect) {
         return;
@@ -277,13 +282,12 @@ pub fn draw_dot_btn(
         0.05,
     );
 
-    let _hover_t = group_hover_t.unwrap_or_else(|| {
-        ui.ctx().animate_value_with_time(
-            resp.id.with("hover"),
-            if resp.hovered() { 1.0 } else { 0.0 },
-            0.1,
-        )
-    });
+    // Ignore grouped hover; make each light up individually like future theme
+    let _hover_t = ui.ctx().animate_value_with_time(
+        resp.id.with("hover"),
+        if resp.hovered() { 1.0 } else { 0.0 },
+        0.1,
+    );
 
     let center = resp.rect.center();
     let push_y = press_t * 1.5;
@@ -295,23 +299,23 @@ pub fn draw_dot_btn(
         p.circle_filled(center + egui::vec2(0.0, 1.0), r+0.5, Color32::from_rgba_premultiplied(0, 0, 0, shadow_op));
     }
 
-    // darken base color when pressed
-    let darken = 1.0 - (press_t * 0.3);
-    let c_r = (base_color.r() as f32 * darken) as u8;
-    let c_g = (base_color.g() as f32 * darken) as u8;
-    let c_b = (base_color.b() as f32 * darken) as u8;
+    // darken base color when pressed, light up when hovered
+    let darken = 1.0 - (press_t * 0.35) + (_hover_t * 0.25);
+    let c_r = ((base_color.r() as f32 * darken).min(255.0)) as u8;
+    let c_g = ((base_color.g() as f32 * darken).min(255.0)) as u8;
+    let c_b = ((base_color.b() as f32 * darken).min(255.0)) as u8;
     let active_color = Color32::from_rgb(c_r, c_g, c_b);
 
     // base
     p.circle_filled(draw_center, r, active_color);
     // bottom glow (inner reflection)
-    let lr = (c_r as f32 * 1.5).min(255.0) as u8;
-    let lg = (c_g as f32 * 1.5).min(255.0) as u8;
-    let lb = (c_b as f32 * 1.5).min(255.0) as u8;
+    let lr = ((c_r as f32 * 1.5).min(255.0)) as u8;
+    let lg = ((c_g as f32 * 1.5).min(255.0)) as u8;
+    let lb = ((c_b as f32 * 1.5).min(255.0)) as u8;
     p.circle_filled(draw_center + egui::vec2(0.0, 1.5), r - 1.5, Color32::from_rgb(lr, lg, lb));
 
     // top hard highlight fades slightly on press
-    let hl_op = (220.0 * (1.0 - press_t * 0.4)) as u8;
+    let hl_op = (220.0 * (1.0 - press_t * 0.4) * (1.0 + _hover_t * 0.05)).min(255.0) as u8;
     let hl_rect = Rect::from_min_size(draw_center - egui::vec2(r-1.5, r-1.0), egui::vec2((r-1.5)*2.0, r*0.8));
     p.rect_filled(hl_rect, r, Color32::from_rgba_premultiplied(255, 255, 255, hl_op));
     // Symbols — drawn as text, sunken/embossed
@@ -425,7 +429,7 @@ pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> 
         // For unrotated text, pos is the top-left of the layout box.
         // We center it manually, applying the same optical vertical tweak (-1.5) as before.
         let c = rect.center();
-        let pos = egui::pos2(c.x - gw / 2.0, c.y - gh / 2.0 - 1.5 + shift_y);
+        let pos = egui::pos2(c.x - gw / 2.0, c.y - gh / 2.0 - 2.5 + shift_y);
         let shadow_a = (120.0 * (1.0 - shift_y / 1.5)) as u8;
         let hi = Color32::from_rgba_premultiplied(255, 255, 255, shadow_a);
         for (off, color) in [
@@ -458,11 +462,11 @@ pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32,
         let shift_y = draw_gumdrop(ui, &response, rect);
         // s = +1 for → (CW, +π/2), -1 for ← (CCW, -π/2).
         // After rotation the galley optical center lands at rect.center():
-        //   x offset = ±(gh * 0.42 + 3.0)  — corrects for line-box vs glyph optical center
-        //   y offset = ∓gw/2               — recenters the rotated glyph extent
+        //   x offset = ±(gh/2 + 2.0)  — gh/2 is the mathematical center; +2.0 is an optical nudge outward
+        //   y offset = ∓gw/2         — recenters the rotated glyph extent
         let s = angle.signum();
         let c = rect.center();
-        let pos = egui::pos2(c.x + s * (gh * 0.42 + 3.0), c.y - s * gw / 2.0 + shift_y);
+        let pos = egui::pos2(c.x + s * (gh / 2.0 + 2.0), c.y - s * gw / 2.0 + shift_y);
         let shadow_a = (120.0 * (1.0 - shift_y / 1.5)) as u8;
         let hi = Color32::from_rgba_premultiplied(255, 255, 255, shadow_a);
         for (off, color) in [

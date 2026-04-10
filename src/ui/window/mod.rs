@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
-use crate::ui::{GAP_XS, GAP_SM, GAP_MD, GAP_LG, KEY_CAP_SIDE};
+use crate::ui::{GAP_XS, GAP_SM, GAP_MD, KEY_CAP_SIDE};
 
 use winit::{
     application::ApplicationHandler,
@@ -9,7 +9,7 @@ use winit::{
     window::{Window, WindowId},
 };
 
-use crate::engine::sim::{Command, BranchProjectionData, SimHandle, Stats};
+use crate::engine::sim::{Command, SimHandle, Stats};
 
 use super::espresso_walk;
 
@@ -74,16 +74,6 @@ fn make_env_data(seed: &str) -> [f32; 24] {
     data
 }
 
-fn speed_label(speed: u8) -> &'static str {
-    match speed {
-        0 => "¼ T/s",
-        1 => "1 T/s",
-        2 => "10 T/s",
-        3 => "100 T/s",
-        4 => "1K T/s",
-        _ => "∞",
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 pub fn run(
@@ -97,14 +87,14 @@ pub fn run(
     background_noise: f32,
     first_wave_weights: [[f32; 14]; 12],
 ) {
-    let espresso = espresso_walk::generate(12, &seed, espresso_walk::Palette::Bright);
+    let espresso = espresso_walk::generate(12, &seed, espresso_walk::Palette::Wide);
     let espresso_rgb: [[f32; 3]; 12] = std::array::from_fn(|i| {
         let c = espresso[i];
         [c.r() as f32 / 255.0, c.g() as f32 / 255.0, c.b() as f32 / 255.0]
     });
     let color_data = crate::engine::color_math::build(&first_wave_weights, &espresso_rgb);
     let wave_lch = espresso_walk::seed_lch(&seed, 3);
-    let wave_colors = espresso_walk::generate(3, &seed, espresso_walk::Palette::Bright);
+    let wave_colors = espresso_walk::generate(3, &seed, espresso_walk::Palette::Wide);
     let env_data0 = make_env_data(&seed);
     let wave_params0: Vec<[f64; 5]> = (0..3).map(|w| {
         let gn = crate::ui::ascii_render::get_gn_at_time(&env_data0, w, 0.0, background_noise as f64);
@@ -147,6 +137,7 @@ pub fn run(
         last_projection_tick: 0,
         last_bounds_instant: None,
         pending_fullscreen_toggle: false,
+        pending_minimize_time: None,
         circle_axes: ([0.0; 14], [0.0; 14], [0.0; 14]),
         last_sent_bounds: [-15.0, 15.0, -15.0, 15.0],
         speed: 1,

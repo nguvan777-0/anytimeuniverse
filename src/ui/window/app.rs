@@ -63,6 +63,7 @@ struct App {
     last_rendered_residual: f64,
     field_force_redraw:     bool,
     pending_fullscreen_toggle: bool,
+    pending_minimize_time: Option<std::time::Instant>,
 }
 
 /// Mirror of the shader's generation system — same hash, same accumulator.
@@ -72,12 +73,12 @@ fn wave_prominence_at(env_data: &[f32; 24], t: f64, noise: f32) -> [f32; 3] {
     const EUL: f64 = std::f64::consts::E;
 
     // Hash: continuous harmonic function for smooth traits
-    let fhash = |wave_i: u32, gn: u32, ch: u32| -> f64 {
+    let fhash = |wave_i: u32, gn: u64, ch: u32| -> f64 {
         let x = (wave_i as f64) * 97.0 + (gn as f64) * PHI + (ch as f64) * 7.321;
         let v = x.sin() + (x * std::f64::consts::E).sin() * 0.5 + (x * std::f64::consts::PI).sin() * 0.25;
         (v * 1.5).sin() * 0.5 + 0.5
     };
-    let gen_param = |wave_i: u32, gn: u32, ch: u32| -> f64 {
+    let gen_param = |wave_i: u32, gn: u64, ch: u32| -> f64 {
         fhash(wave_i, gn, ch)
     };
 
@@ -95,17 +96,20 @@ fn wave_prominence_at(env_data: &[f32; 24], t: f64, noise: f32) -> [f32; 3] {
             (drift_freq * std::f64::consts::PI * t + drift_phase * EUL).sin()
         );
         let acc  = (base_acc + wiggle).max(0.0);
-        let gn   = acc.floor() as u32;
+        let gn   = acc.floor() as u64;
         let frac = acc.fract();
 
         let wi = i as u32;
-        // mirror of memory() in shader — power-based carry (copying)
-        let copy = |g: u32, ch: u32| -> f64 {
+        // mirror of memory() in wave_cache.rs — power-based carry with complexity bonus
+        const RES_TARGET: f64 = 0.6180339887498948; // PHI - 1
+        let copy = |g: u64, ch: u32| -> f64 {
             let own    = gen_param(wi, g, ch);
-            let prev  = gen_param(wi, g.wrapping_sub(1), ch);
+            let prev   = gen_param(wi, g.wrapping_sub(1), ch);
             let amp_n  = 0.3 + gen_param(wi, g, 0) * 2.4;
             let freq_n = 0.4 + gen_param(wi, g, 1) * 1.2;
-            let power = (amp_n * freq_n * 0.4).clamp(0.0, 1.0);
+            let resonance = gen_param(wi, g, 8);
+            let cb = 1.0 - ((resonance - RES_TARGET).abs() / RES_TARGET).clamp(0.0, 1.0);
+            let power = (amp_n * freq_n * 0.4 * (0.5 + 0.5 * cb)).clamp(0.0, 1.0);
             let carry = gen_param(wi, g, ch + 10) * 0.5 + power * 0.5;
             prev + (own - prev) * carry
         };
@@ -123,83 +127,9 @@ fn wave_prominence_at(env_data: &[f32; 24], t: f64, noise: f32) -> [f32; 3] {
     [amps[0] / total, amps[1] / total, amps[2] / total]
 }
 
-/// Compute a branch's display color by applying the 14×3 color projection matrix.
-fn blend_branch_color(weights: &[f32; 14], color_data: &crate::engine::color_math::ColorData, first_wave_id: usize) -> egui::Color32 {
-    let rgb = crate::engine::color_math::apply(color_data, weights, first_wave_id);
-    let tone = |v: f32| (v * 255.0).clamp(0.0, 255.0) as u8;
-    egui::Color32::from_rgb(tone(rgb[0]), tone(rgb[1]), tone(rgb[2]))
-}
 
-/// Returns `(projected_points, axis1, axis2, mean)`.
-fn compute_projection_2d(points: &[[f32; 14]; 12], valid: &[bool; 12])
-    -> ([(f32, f32); 12], [f32; 14], [f32; 14], [f32; 14])
-{
-    let mut valid_count = 0;
-    let mut mean = [0.0; 14];
-    for i in 0..12 {
-        if valid[i] {
-            valid_count += 1;
-            for j in 0..14 { mean[j] += points[i][j]; }
-        }
-    }
-    if valid_count < 2 { return ([(0.0, 0.0); 12], [0.0; 14], [0.0; 14], mean); }
-    for j in 0..14 { mean[j] /= valid_count as f32; }
-
-    let mut centered = [[0.0; 14]; 12];
-    for i in 0..12 {
-        if valid[i] {
-            for j in 0..14 { centered[i][j] = points[i][j] - mean[j]; }
-        }
-    }
-
-    let get_pc = |data: &mut [[f32; 14]; 12]| -> [f32; 14] {
-        let mut t = [1.0 / 14f32.sqrt(); 14];
-        for _ in 0..10 { // Power iteration
-            let mut new_t = [0.0; 14];
-            for i in 0..12 {
-                if !valid[i] { continue; }
-                let mut dot = 0.0;
-                for j in 0..14 { dot += data[i][j] * t[j]; }
-                for j in 0..14 { new_t[j] += dot * data[i][j]; }
-            }
-            let norm = new_t.iter().map(|v| v * v).sum::<f32>().sqrt();
-            if norm > 0.0 { for j in 0..14 { t[j] = new_t[j] / norm; } }
-        }
-        t
-    };
-
-    let p1 = get_pc(&mut centered.clone());
-
-    // Remove p1 projection
-    let mut data_p2 = centered;
-    for i in 0..12 {
-        if !valid[i] { continue; }
-        let mut dot = 0.0;
-        for j in 0..14 { dot += data_p2[i][j] * p1[j]; }
-        for j in 0..14 { data_p2[i][j] -= dot * p1[j]; }
-    }
-    let p2 = get_pc(&mut data_p2);
-
-    let mut out = [(0.0, 0.0); 12];
-    for i in 0..12 {
-        if valid[i] {
-            let mut d1 = 0.0;
-            let mut d2 = 0.0;
-            for j in 0..14 {
-                d1 += centered[i][j] * p1[j];
-                d2 += centered[i][j] * p2[j];
-            }
-            out[i] = (d1, d2);
-        }
-    }
-    (out, p1, p2, mean)
-}
 
 impl App {
-    fn update_colors(_queue: &wgpu::Queue, _color_buf: Option<()>, _color_data: &crate::engine::color_math::ColorData) {
-        // color_data is no longer bound to the shader — PCA/branch colors live CPU-side only.
-    }
-
     fn reset_simulation(&mut self, change_seed: bool) {
         if change_seed {
             let num = crate::hash_seed(&self.seed);

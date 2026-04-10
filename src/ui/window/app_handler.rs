@@ -310,7 +310,7 @@ impl ApplicationHandler for App {
 
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, _event: ()) {
         let mut got_stats = false;
-        
+
         while self.sim_handle.stats_buffer.update() {
             let stats = self.sim_handle.stats_buffer.read().clone();
             if let Some(prev) = &self.last_stats
@@ -348,25 +348,23 @@ impl ApplicationHandler for App {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         // Handle pan keys before egui gets a chance to consume them.
-        if let WindowEvent::KeyboardInput { event: ref key_event, .. } = event {
-            if key_event.state == winit::event::ElementState::Pressed {
-                if let winit::keyboard::PhysicalKey::Code(code) = key_event.physical_key {
-                    let panned = match code {
-                        winit::keyboard::KeyCode::KeyW => { self.pan_y -= 0.25; true }
-                        winit::keyboard::KeyCode::KeyA => { self.pan_x -= 0.25; true }
-                        winit::keyboard::KeyCode::KeyS => { self.pan_y += 0.25; true }
-                        winit::keyboard::KeyCode::KeyD => { self.pan_x += 0.25; true }
-                        _ => false,
-                    };
-                    if panned {
-                        self.field_force_redraw = true;
-                        if let Some(state) = &self.state {
-                            state.window.request_redraw();
-                        }
+        if let WindowEvent::KeyboardInput { event: ref key_event, .. } = event
+            && key_event.state == winit::event::ElementState::Pressed
+            && let winit::keyboard::PhysicalKey::Code(code) = key_event.physical_key {
+                let panned = match code {
+                    winit::keyboard::KeyCode::KeyW => { self.pan_y -= 0.25; true }
+                    winit::keyboard::KeyCode::KeyA => { self.pan_x -= 0.25; true }
+                    winit::keyboard::KeyCode::KeyS => { self.pan_y += 0.25; true }
+                    winit::keyboard::KeyCode::KeyD => { self.pan_x += 0.25; true }
+                    _ => false,
+                };
+                if panned {
+                    self.field_force_redraw = true;
+                    if let Some(state) = &self.state {
+                        state.window.request_redraw();
                     }
                 }
             }
-        }
 
         if let Some(state) = &mut self.state {
             let res = state.egui_state.on_window_event(&state.window, &event);
@@ -508,10 +506,9 @@ impl ApplicationHandler for App {
                                 const PERIOD: f64 = std::f64::consts::TAU / FREQ_MIN;
                                 let current_t = self.t_epoch as f64 * PERIOD + self.t_residual;
                                 let jump = if current_t.abs() < 1.0 {
-                                    PERIOD
+                                    1.0
                                 } else {
-                                    let magnitude = 10f64.powi(current_t.abs().log10().floor() as i32);
-                                    (current_t.abs() / magnitude).floor() * magnitude
+                                    10f64.powi(current_t.abs().log10().floor() as i32)
                                 };
                                 if code == winit::keyboard::KeyCode::ArrowLeft {
                                     self.t_residual -= jump;
@@ -528,8 +525,7 @@ impl ApplicationHandler for App {
                                     self.t_epoch = self.t_epoch.saturating_sub(borrow);
                                     self.t_residual += borrow as f64 * PERIOD;
                                 }
-                                self.is_paused = true;
-                                let _ = self.sim_handle.cmd_tx.send(Command::Pause);
+
                                 if let Some(state) = &self.state {
                                     state.window.request_redraw();
                                 }
@@ -578,9 +574,20 @@ impl ApplicationHandler for App {
                     }
             }
             WindowEvent::RedrawRequested => {
+                let state = self.state.as_mut().unwrap();
+
+                if let Some(trigger_time) = self.pending_minimize_time {
+                    if std::time::Instant::now() >= trigger_time {
+                        self.pending_minimize_time = None;
+                        state.window.set_minimized(true);
+                    } else {
+                        // Keep pumping frames until the delay passes
+                        state.window.request_redraw();
+                    }
+                }
+
                 let mut pending_reset = None;
                 let mut pending_title = None;
-                let state = self.state.as_mut().unwrap();
 
                 let dt = self.last_frame.elapsed().as_secs_f32();
                 let _dt = dt; // clear warning
@@ -679,7 +686,8 @@ impl ApplicationHandler for App {
                             ui.painter().rect_filled(btn_rect, egui::CornerRadius::ZERO, bg);
                             ui.painter().rect_stroke(btn_rect, egui::CornerRadius::ZERO, if is_down || is_hov { egui::Stroke::NONE } else { egui::Stroke::new(1.0, fg) }, egui::StrokeKind::Outside);
 
-                            let text_pos = btn_rect.center() + egui::vec2(0.0, offset_y);
+                            let push = if is_down { egui::vec2(1.0, 1.0) } else { egui::Vec2::ZERO };
+                            let text_pos = btn_rect.center() + egui::vec2(0.0, offset_y) + push;
                             ui.painter().text(
                                 text_pos,
                                 egui::Align2::CENTER_CENTER,
@@ -694,10 +702,10 @@ impl ApplicationHandler for App {
                         right_edge -= 14.0;
                         let max_clicked = draw_term_btn(ui, right_edge, "c_btn_m", "~", 0.0);
 
-                        right_edge -= 16.0;
+                        right_edge -= 17.0;
                         let min_clicked = draw_term_btn(ui, right_edge, "c_btn_n", ".", 0.0);
 
-                        right_edge -= 16.0;
+                        right_edge -= 17.0;
                         let exit_clicked = draw_term_btn(ui, right_edge, "c_btn_x", "*", 0.0);
 
                         right_edge -= 6.0;
@@ -722,20 +730,20 @@ impl ApplicationHandler for App {
                                 term_bar_green,
                             );
                         }
-                        
+
                         let text_rect = egui::Rect::from_min_max(rect.min + egui::vec2(4.0, 2.0), egui::pos2(right_edge, rect.max.y));
                         let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(text_rect).layout(egui::Layout::left_to_right(egui::Align::TOP)));
                         child_ui.visuals_mut().extreme_bg_color = egui::Color32::TRANSPARENT;
                         child_ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
                         child_ui.visuals_mut().widgets.active.bg_fill = egui::Color32::TRANSPARENT;
-                        
+
                         let edit = egui::TextEdit::singleline(title_text)
                             .frame(egui::Frame::NONE)
                             .font(egui::FontId::monospace(13.0))
                             .text_color(term_bar_green)
                             .margin(egui::vec2(0.0, -1.0));
                         let action = child_ui.add(edit);
-                        
+
                         if action.gained_focus()
                             && let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), action.id) {
                                 state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
@@ -744,7 +752,7 @@ impl ApplicationHandler for App {
                                 )));
                                 egui::TextEdit::store_state(ui.ctx(), action.id, state);
                             }
-                        
+
                         if (action.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) || action.lost_focus() {
                             if *title_text != *real_title {
                                 if title_text.trim().is_empty() {
@@ -895,7 +903,7 @@ impl ApplicationHandler for App {
                                         ui.visuals_mut().widgets.inactive.bg_stroke = egui::Stroke::NONE;
                                         ui.visuals_mut().widgets.hovered.bg_stroke = egui::Stroke::NONE;
                                         ui.visuals_mut().widgets.active.bg_stroke  = egui::Stroke::NONE;
-                                        
+
                                         // Sync hover highlights with text selection colors across themes
                                         if matches!(self.theme, Theme::Dew) {
                                             ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::from_rgb(180, 210, 255);
@@ -918,7 +926,7 @@ impl ApplicationHandler for App {
                                         add_btn(ui, Theme::Dew, "Dew     ");
                                         add_btn(ui, Theme::Future, "Future  ");
                                     });
-                                    
+
                                     ui.ctx().set_global_style(prev_style);
                                 }
                                 if ds != self.theme {
@@ -928,7 +936,7 @@ impl ApplicationHandler for App {
                             });
 
                         });
-                        
+
                     let right_panel_res = egui::Panel::right("wight_control").show_separator_line(false)
                         .resizable(false)
                         .exact_size(260.0)
@@ -961,13 +969,13 @@ impl ApplicationHandler for App {
                                             ui.painter().line_segment([egui::pos2(left, y+1.0), egui::pos2(right, y+1.0)], egui::Stroke::new(1.0, egui::Color32::from_rgb(250, 255, 255)));
                                         }
                                     }
-                                    
-                                    let r = 6.0;
+
+                                    let r = 8.0;
                                     let cy = rect.center().y;
-                                    
+
                                     // Dew behaviour: hover ANY of the 3 buttons, and ALL 3 show their icons.
                                     let group_rect = egui::Rect::from_min_max(
-                                        egui::pos2(right - 50.0 - r - 2.0, cy - r - 2.0),
+                                        egui::pos2(right - 54.0 - r - 2.0, cy - r - 2.0),
                                         egui::pos2(right - 14.0 + r + 2.0, cy + r + 2.0),
                                     );
                                     let group_hovered = ui.rect_contains_pointer(group_rect);
@@ -976,7 +984,7 @@ impl ApplicationHandler for App {
                                         if group_hovered { 1.0 } else { 0.0 },
                                         0.1,
                                     );
-                                    
+
                                     let btn_color = if matches!(self.theme, Theme::Future) {
                                         egui::Color32::from_rgb(88, 94, 112) // FUTURE_BODY — match future big buttons
                                     } else {
@@ -994,23 +1002,23 @@ impl ApplicationHandler for App {
                                         }
                                         resp.clicked()
                                     };
-                                    
-                                    if draw_anim_gumdrop(ui, "tb_red", 50.0, btn_color, "*") { exit_req = true; }
-                                    if draw_anim_gumdrop(ui, "tb_yellow", 32.0, btn_color, ".") { minimize_req = true; }
+
+                                    if draw_anim_gumdrop(ui, "tb_red", 54.0, btn_color, "*") { exit_req = true; }
+                                    if draw_anim_gumdrop(ui, "tb_yellow", 34.0, btn_color, ".") { minimize_req = true; }
                                     if draw_anim_gumdrop(ui, "tb_green", 14.0, btn_color, "~") { fullscreen_req = true; }
-                                    
+
                                     let title_color = if matches!(self.theme, Theme::Future) {
                                         egui::Color32::WHITE
                                     } else {
                                         egui::Color32::from_rgb(30, 30, 30)
                                     };
-                                    
+
                                     let font_id = egui::FontId::proportional(14.0);
                                     let galley = ui.painter().layout_no_wrap(self.title_text.clone(), font_id.clone(), title_color);
                                     let text_pos = egui::pos2(left + 8.0, cy - galley.size().y / 2.0);
-                                    
+
                                     let text_rect = egui::Rect::from_min_size(text_pos, galley.size());
-                                    
+
                                     if matches!(self.theme, Theme::Future) {
                                         ui.painter().rect_filled(
                                             text_rect.expand2(egui::vec2(4.0, -1.0)),
@@ -1018,21 +1026,21 @@ impl ApplicationHandler for App {
                                             egui::Color32::BLACK,
                                         );
                                     }
-                                    
+
                                     let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(text_rect).layout(egui::Layout::left_to_right(egui::Align::TOP)));
                                     child_ui.visuals_mut().extreme_bg_color = egui::Color32::TRANSPARENT;
                                     child_ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
                                     child_ui.visuals_mut().widgets.active.bg_fill = egui::Color32::TRANSPARENT;
-                                    
+
                                     let edit = egui::TextEdit::singleline(&mut self.title_text)
                                         .frame(egui::Frame::NONE)
                                         .font(font_id)
                                         .text_color(title_color)
                                         .margin(egui::vec2(0.0, 0.0))
                                         .desired_width(150.0);
-                                        
+
                                     let action = child_ui.add(edit);
-                                    
+
                                     if action.gained_focus()
                                         && let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), action.id) {
                                             state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
@@ -1041,7 +1049,7 @@ impl ApplicationHandler for App {
                                             )));
                                             egui::TextEdit::store_state(ui.ctx(), action.id, state);
                                         }
-                                    
+
                                     if (action.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) || action.lost_focus() {
                                         if self.title_text != self.title {
                                             if self.title_text.trim().is_empty() {
@@ -1054,7 +1062,7 @@ impl ApplicationHandler for App {
                                     } else if !action.has_focus() {
                                         self.title_text = self.title.clone();
                                     }
-                                    
+
                                 }
                             }
 
@@ -1080,7 +1088,7 @@ impl ApplicationHandler for App {
                                     let padding = egui::vec2(8.0, 4.0);
                                     let size = egui::vec2(ui.available_width(), galley.size().y + padding.y * 2.0);
                                     let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
-                                    
+
                                     if ui.is_rect_visible(rect) {
                                         let p = ui.painter();
                                         if matches!(self.theme, Theme::Rect) {
@@ -1091,32 +1099,32 @@ impl ApplicationHandler for App {
                                             p.rect_filled(rect, rect.height() / 2.0, bg);
                                             crate::ui::dew::draw_inset(p, rect);
                                         }
-                                        
+
                                         let inner_rect = egui::Rect::from_center_size(rect.center(), galley.size());
                                         let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(inner_rect).layout(*ui.layout()));
                                         child_ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |child_ui| {
                                             child_ui.spacing_mut().item_spacing.x = 0.0;
-                                            
+
                                             let font_id = egui::FontId::monospace(11.0);
                                             let seed_w = child_ui.painter().layout_no_wrap(self.seed_text.clone(), font_id.clone(), stat_color).size().x;
-                                            
+
                                             // Invisible editable text
                                             child_ui.visuals_mut().extreme_bg_color = egui::Color32::TRANSPARENT;
                                             child_ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
                                             child_ui.visuals_mut().widgets.active.bg_fill = egui::Color32::TRANSPARENT;
-                                            
+
                                             let edit = egui::TextEdit::singleline(&mut self.seed_text)
                                                 .frame(egui::Frame::NONE)
                                                 .font(font_id.clone())
                                                 .text_color(stat_color)
                                                 .desired_width(seed_w.max(5.0)); // Prevent total collapse of width
-                                                
+
                                             let seed_action = child_ui.add(edit);
-                                            
+
                                             child_ui.label(egui::RichText::new(format!("  ·  {}  ·  {:.0}fps", noise_str, self.fps))
                                                 .font(font_id)
                                                 .color(stat_color));
-                                                
+
                                             if seed_action.gained_focus()
                                                 && let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), seed_action.id) {
                                                     state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
@@ -1125,7 +1133,7 @@ impl ApplicationHandler for App {
                                                     )));
                                                     egui::TextEdit::store_state(ui.ctx(), seed_action.id, state);
                                                 }
-                                            
+
                                             if (seed_action.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) || seed_action.lost_focus() {
                                                 if self.seed_text != self.seed {
                                                     if self.seed_text.trim().is_empty() {
@@ -1179,7 +1187,7 @@ impl ApplicationHandler for App {
                                                 let label_top_y = ui.cursor().min.y;
                                                 ui.add_space(label_h);
                                                 let btn_row = ui.horizontal(|ui| {
-                                                    ui.style_mut().spacing.item_spacing.x = GAP_SM;
+                                                    ui.style_mut().spacing.item_spacing.x = if matches!(self.theme, Theme::Rect) { 3.0 } else { GAP_XS };
                                                     let r = self.theme.provider().key_cap_small(ui, "↓", btn_side, 26.0);
                                                     if r.clicked() { arrow_down_req = true; }
                                                     let r = self.theme.provider().key_cap_small(ui, "↑", btn_side, 26.0);
@@ -1191,7 +1199,7 @@ impl ApplicationHandler for App {
                                                 let text = "SLOW  FAST";
                                                 let galley = ui.painter().layout_no_wrap(text.to_string(), font, color);
                                                 let text_rect = egui::Align2::CENTER_TOP.anchor_size(egui::pos2(center_x, label_top_y), galley.size());
-                                                
+
                                                 if matches!(self.theme, Theme::Future) {
                                                     ui.painter().rect_filled(
                                                         text_rect.expand2(egui::vec2(2.0, -1.0)),
@@ -1230,18 +1238,11 @@ impl ApplicationHandler for App {
                                         }
                                     });
                                     ui.add_space(GAP_XS);
-                                    let r = crate::ui::widgets::slider_symlog_f64(self.theme.provider(), 
+                                    let r = crate::ui::widgets::slider_symlog_f64(self.theme.provider(),
                                         ui,
                                         &mut self.custom_speed,
                                         1e12f64,
                                         "",
-                                        |v| {
-                                            let av = v.abs();
-                                            let sign = if v < 0.0 { "-" } else { "" };
-                                            if av < 0.01 { "0.00 T/s".to_string() }
-                                            else if av < 10.0 { format!("{}{:.2} T/s", sign, av) }
-                                            else { format!("{}{:.0} T/s", sign, av) }
-                                        }
                                     );
                                     let av = self.custom_speed.abs();
                                     let sign = if self.custom_speed < 0.0 { "-" } else { "" };
@@ -1266,7 +1267,7 @@ impl ApplicationHandler for App {
                                     let lbl_galley = ui.painter().layout_no_wrap("TIME TRAVEL".to_string(), egui::FontId::monospace(8.0), egui::Color32::BLACK);
                                     let label_h = lbl_galley.size().y;
                                     let btn_side = KEY_CAP_SIDE;
-                                    
+
                                     let field_h = btn_side + GAP_SM + label_h;
                                     let av = t_display.abs();
                                     let sign = if t_display < 0.0 { "-" } else { "" };
@@ -1278,7 +1279,7 @@ impl ApplicationHandler for App {
                                                 let label_top_y = ui.cursor().min.y;
                                                 ui.add_space(label_h);
                                                 let btn_row = ui.horizontal(|ui| {
-                                                    ui.style_mut().spacing.item_spacing.x = GAP_SM;
+                                                    ui.style_mut().spacing.item_spacing.x = if matches!(self.theme, Theme::Rect) { 3.0 } else { GAP_XS };
                                                     let r = self.theme.provider().key_cap_small_rotated(ui, "↑", -std::f32::consts::FRAC_PI_2, btn_side, 26.0);
                                                     if r.clicked() { arrow_left_req = true; }
                                                     let r = self.theme.provider().key_cap_small_rotated(ui, "↑", std::f32::consts::FRAC_PI_2, btn_side, 26.0);
@@ -1290,7 +1291,7 @@ impl ApplicationHandler for App {
                                                 let text = "TIME TRAVEL";
                                                 let galley = ui.painter().layout_no_wrap(text.to_string(), font, color);
                                                 let text_rect = egui::Align2::CENTER_TOP.anchor_size(egui::pos2(center_x, label_top_y), galley.size());
-                                                
+
                                                 if matches!(self.theme, Theme::Future) {
                                                     ui.painter().rect_filled(
                                                         text_rect.expand2(egui::vec2(2.0, -1.0)),
@@ -1317,8 +1318,7 @@ impl ApplicationHandler for App {
                                                 let new_epoch = ((new_t - new_residual) / PERIOD_SL).round() as i64;
                                                 self.t_epoch = new_epoch;
                                                 self.t_residual = new_residual;
-                                                self.is_paused = true;
-                                                let _ = self.sim_handle.cmd_tx.send(Command::Pause);
+
                                                 let av2 = new_t.abs();
                                                 let sign2 = if new_t < 0.0 { "-" } else { "" };
                                                 self.time_text = if av2 < 0.01 { "0.0 T".to_string() }
@@ -1336,21 +1336,11 @@ impl ApplicationHandler for App {
                                         }
                                     });
                                     ui.add_space(GAP_XS);
-                                    let r = crate::ui::widgets::slider_symlog_f64(self.theme.provider(), 
+                                    let r = crate::ui::widgets::slider_symlog_f64(self.theme.provider(),
                                         ui,
                                         &mut t_display,
                                         t_display_max,
                                         "",
-                                        |v| {
-                                            let av = v.abs();
-                                            let sign = if v < 0.0 { "-" } else { "" };
-                                            if av < 0.01 { "0.0 T".to_string() }
-                                            else if av < 1e5 { format!("{}{:.1} T", sign, av) }
-                                            else {
-                                                let e = av.log10().floor() as i32;
-                                                format!("{}{:.2}e{} T", sign, av / 10f64.powi(e), e)
-                                            }
-                                        }
                                     );
                                     let val_str = if av < 0.01 { "0.0 T".to_string() }
                                         else if av < 1e5 { format!("{}{:.1} T", sign, av) }
@@ -1358,7 +1348,7 @@ impl ApplicationHandler for App {
                                     if r.changed() { self.time_text = val_str; }
                                     r
                                 }).inner;
-                                
+
                                 if time_resp.drag_started() {
                                     let was_playing = !self.is_paused;
                                     ui.memory_mut(|mem| mem.data.insert_temp(time_resp.id.with("was_playing"), was_playing));
@@ -1369,8 +1359,8 @@ impl ApplicationHandler for App {
                                     let new_epoch = ((t_display - new_residual) / PERIOD_SL).round() as i64;
                                     self.t_epoch = new_epoch;
                                     self.t_residual = new_residual;
-                                    self.is_paused = true;
-                                    
+
+
                                     // Recompute COLOR RIVER as 240 evenly-spaced T samples ending at current T.
                                     // Always in sync: rewind, jump, reverse — the river instantly shows that epoch.
                                     const PERIOD: f64 = std::f64::consts::TAU / 0.1;
@@ -1403,29 +1393,29 @@ impl ApplicationHandler for App {
                                         let _ = self.sim_handle.cmd_tx.send(Command::Resume);
                                     }
                                 }
-                                
+
                             ui.add_space(GAP_MD);
                             ui.style_mut().spacing.item_spacing.y = 0.0;
                             include!("acoustic_scanner.rs");
-                                
+
                             ui.add_space(GAP_MD);
                             ui.style_mut().spacing.item_spacing.y = 0.0;
                             include!("superposition.rs");
                                 ui.add_space(GAP_SM);
                             }); // scroll area
                         }); // side panel
-                        
+
                     if matches!(self.theme, Theme::Rect) {
                         let left_x = left_panel_res.response.rect.right();
                         let right_x = right_panel_res.response.rect.left();
                         let top_y = 0.0;
                         let bottom_y = ui.ctx().input(|i| i.content_rect()).height();
-                        
+
                         let sim_rect = egui::Rect::from_min_max(
                             egui::pos2(left_x, top_y),
                             egui::pos2(right_x, bottom_y),
                         );
-                        
+
                         ui.ctx().layer_painter(egui::LayerId::background()).rect_stroke(
                             sim_rect,
                             egui::CornerRadius::ZERO,
@@ -1436,7 +1426,16 @@ impl ApplicationHandler for App {
                 });
 
                 if exit_req { event_loop.exit(); }
-                if minimize_req { state.window.set_minimized(true); }
+                if minimize_req {
+                    if state.window.fullscreen().is_some() {
+                        // macOS fullscreen transition takes ~500-700ms, wait 800ms to be safe
+                        self.pending_minimize_time = Some(std::time::Instant::now() + std::time::Duration::from_millis(800));
+                        state.window.set_fullscreen(None);
+                        state.window.request_redraw(); // Keep the pump going
+                    } else {
+                        state.window.set_minimized(true);
+                    }
+                }
                 if rewind_req {                    self.t_epoch = 0;
                     self.t_residual = 0.0;
                     self.wave_speed = 1.0;
@@ -1516,10 +1515,9 @@ impl ApplicationHandler for App {
                     const PERIOD: f64 = std::f64::consts::TAU / FREQ_MIN;
                     let current_t = self.t_epoch as f64 * PERIOD + self.t_residual;
                     let jump = if current_t.abs() < 1.0 {
-                        PERIOD
+                        1.0
                     } else {
-                        let magnitude = 10f64.powi(current_t.abs().log10().floor() as i32);
-                        (current_t.abs() / magnitude).floor() * magnitude
+                        10f64.powi(current_t.abs().log10().floor() as i32)
                     };
                     if arrow_left_req { self.t_residual -= jump; } else { self.t_residual += jump; }
                     if self.t_residual >= PERIOD {
@@ -1531,8 +1529,7 @@ impl ApplicationHandler for App {
                         self.t_epoch = self.t_epoch.saturating_sub(borrow);
                         self.t_residual += borrow as f64 * PERIOD;
                     }
-                    self.is_paused = true;
-                    let _ = self.sim_handle.cmd_tx.send(Command::Pause);
+                    
                     let new_t = self.t_epoch as f64 * PERIOD + self.t_residual;
                     let av_t = new_t.abs();
                     let sign_t = if new_t < 0.0 { "-" } else { "" };
@@ -1560,7 +1557,7 @@ impl ApplicationHandler for App {
                 let view = frame.texture.create_view(&Default::default());
 
                 let mut encoder = self.device.create_command_encoder(&Default::default());
-                
+
                 let screen_descriptor = egui_wgpu::ScreenDescriptor {
                     size_in_pixels: [
                         state.window.inner_size().width,
@@ -1599,7 +1596,7 @@ impl ApplicationHandler for App {
                     let t_now = self.t_epoch as f64 * PERIOD + self.t_residual;
                     let prominence = wave_prominence_at(&self.env_data, t_now, self.background_noise)
                         .iter().map(|&f| (f * 1000.0) as u32).collect::<Vec<_>>();
-                    
+
                     if self.wave_speed >= 0.0 {
                         self.history.push_back((prominence, self.wave_colors.clone()));
                         if self.history.len() > 240 {
@@ -1622,7 +1619,7 @@ impl ApplicationHandler for App {
                     for w in 0..3 {
                         let gn = crate::ui::ascii_render::get_gn_at_time(&self.env_data, w, current_t, self.background_noise as f64);
                         let params = crate::ui::ascii_render::get_params(&self.env_data, w, gn);
-                        
+
                         // Audio Pipeline Injection
                         let base = w * 5;
                         audio_params[base] = params[0] as f32;     // amp
@@ -1657,9 +1654,9 @@ impl ApplicationHandler for App {
                     &state.tick_buf,
                     0,
                     bytemuck::cast_slice(&[
-                        t_wrapped, 
-                        self.background_noise, 
-                        t_epoch_f, 
+                        t_wrapped,
+                        self.background_noise,
+                        t_epoch_f,
                         self.pan_x,
                         self.pan_y,
                         0.0f32,
@@ -1678,7 +1675,7 @@ impl ApplicationHandler for App {
                 let panel_physical = 260.0 * screen_descriptor.pixels_per_point;
                 let available_w = (w - panel_physical * 2.0 - padding_px * 2.0).max(1.0);
                 let side = available_w.min(h - padding_px * 2.0);
-                
+
                 let vx = panel_physical + padding_px + (available_w - side) / 2.0;
                 let vy = padding_px + (h - padding_px * 2.0 - side) / 2.0;
 
@@ -1769,9 +1766,9 @@ impl ApplicationHandler for App {
                 } else {
                     monitor_hz
                 };
-                
+
                 // Clamp to monitor refresh rate so a 1ms frame (1000 FPS) doesn't swing the average wildly.
-                let inst_fps = inst_fps.min(monitor_hz); 
+                let inst_fps = inst_fps.min(monitor_hz);
                 self.fps = self.fps * 0.9 + inst_fps * 0.1;
 
                 if self.take_screenshot {

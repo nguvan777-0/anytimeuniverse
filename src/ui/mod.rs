@@ -7,6 +7,7 @@ pub mod rect;
 pub const GAP_XS:  f32 =  2.0;  // tight gap (between paired widgets / post-transport-btn)
 pub const GAP_SM:  f32 =  4.0;  // section separator (between left-panel include blocks)
 pub const GAP_MD:  f32 =  8.0;  // medium gap (between major sections / legend rows)
+#[allow(dead_code)]
 pub const GAP_LG:  f32 = 10.0;  // large gap (e.g. transport → speed slider)
 
 /// Standard square side length for key cap buttons (mute, speed arrows, etc.).

@@ -159,6 +159,7 @@ pub fn params_to_color(base: (f64, f64, f64), params: [f64; 5], params0: [f64; 5
     egui::Color32::from_rgb(r, g, bv)
 }
 
+#[allow(dead_code)]
 pub fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (u8, u8, u8) {
     let c = v * s;
     let x = c * (1.0 - ((h / 60.0) % 2.0 - 1.0).abs());
@@ -178,10 +179,11 @@ pub fn hsv_to_rgb(h: f64, s: f64, v: f64) -> (u8, u8, u8) {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Palette {
     /// Anchored at espresso-brown, 3-D orbital walk (warm, muted).
+    #[allow(dead_code)]
     Espresso,
     /// Full-gamut vivid hues evenly spaced around the CIELAB hue circle at high
     /// chroma, with a seed-derived starting angle.
-    Bright,
+    Wide,
 }
 
 /// Generate `n` perceptually-spread colors, deterministic for a given `world_seed`.
@@ -192,7 +194,7 @@ pub fn generate(n: usize, world_seed: &str, palette: Palette) -> Vec<egui::Color
     });
     let mut rng = Xorshift64(seed | 1);
 
-    if palette == Palette::Bright {
+    if palette == Palette::Wide {
         return seed_lch(world_seed, n)
             .into_iter()
             .map(|(l, c, h)| {

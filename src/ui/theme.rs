@@ -1,8 +1,15 @@
 use egui::{Color32, Context, Painter, Rect, Response, Ui};
 
+#[allow(dead_code)]
 pub trait ThemeProvider {
     fn apply_theme(&self, ctx: &Context);
     fn draw_sunken(&self, painter: &Painter, rect: Rect);
+    
+    /// Optional specific background element for Space Strategy chart (used to draw the digital grid in Future theme)
+    fn draw_space_strategy_bg(&self, ui: &mut Ui, rect: Rect) {
+        self.draw_sunken(ui.painter(), rect);
+    }
+
     fn section_toggle_btn(&self, ui: &mut Ui) -> Response;
     
     // Abstracted button drawing. Returns a Y-offset push applied to text if any (e.g. 1.0 down on press)
@@ -29,9 +36,15 @@ pub trait ThemeProvider {
     fn section_label(&self, ui: &mut Ui, text: &str) -> Response;
     fn text_field_edit(&self, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response;
 
+    /// Preferred text color for UI elements hovering over charts (like trackers/gizmos)
+    fn tracker_color(&self) -> Color32 { self.button_text_color() }
+
     /// Preferred background color for charts and data displays (e.g. Space Strategy).
     fn chart_bg(&self) -> Color32;
 
     /// Color used for axis lines in charts (e.g. Space Strategy crosshairs).
     fn chart_axis_color(&self) -> Color32 { Color32::from_white_alpha(30) }
+
+    /// Should the space strategy tracker lose its border on hover?
+    fn remove_tracker_border_on_hover(&self) -> bool { false }
 }

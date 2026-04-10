@@ -1,9 +1,9 @@
 {
     ui.add_space(GAP_XS);
     ui.style_mut().spacing.item_spacing.y = 0.0;
-    ui.style_mut().spacing.item_spacing.x = GAP_XS;
 
     ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = GAP_XS;
         // Mute Icon Button
         let icon = if self.is_muted || self.acoustic_volume <= 0.01 { "_" } else { "♪" };
         let cap_side = crate::ui::KEY_CAP_SIDE;

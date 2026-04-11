@@ -162,6 +162,27 @@ The CPU computes all non-positional values—hash lookups, blends, and energy—
 
 Simulation parameters are passed to the renderer directly on the main thread, while a separate audio thread (`synth_engine.rs`) drives the additive synthesizer. The sound reflects the live physics: as parameters drift across generations, the timbre changes in sync.
 
+### Wave Data Structure
+The CPU passes wave parameters to the GPU in a fixed-size byte buffer. The simulation runs 3 waves, mapped to 3 `EnvUniform` definitions. Each wave packs 8 `f32` components (32 bytes). The total uniform buffer is 3 × 32 = 96 bytes:
+*   `[0]` — Frequency ($\omega$)
+*   `[1]` — Amplitude ($A$)
+*   `[2]` — Phase Offset ($\phi$)
+*   `[3]` — _Padding / Reserved_
+*   `[4]` — Direction X ($d_x$)
+*   `[5]` — Direction Y ($d_y$)
+*   `[6]` — Speed ($v$)
+*   `[7]` — _Padding / Reserved_
+
+### Numeric Precision & Domain
+Large time jumps require 64-bit precision to avoid rounding errors. The CPU handles all time and physics math using `f64`. Data is cast to `f32` only when sent to the GPU. Consumer GPUs lack fast 64-bit hardware, making `f64` compute heavily penalized, and graphics APIs are built around 32-bit types.
+
+| Domain | Types | Purpose |
+|---|---|---|
+| **Epoch & Residual** | `i64` + `f64` | Time is stored as whole periods (`t_epoch`) plus a fractional offset (`t_residual` in `[0, P)`). This prevents precision loss at scales like $T = 10^{20}$. |
+| **Speed & Delta** | `f64` | `wave_speed` and frametime (`dt`) use `f64` to prevent integration drift at speeds up to $10^{18}$ T/s. |
+| **GPU Shaders** | `f32` | Spatial pixel evaluation. Time offsets are wrapped by the period ($T \bmod 2\pi$) before GPU upload, making `f32` sufficient for drawing. |
+| **UI Constraints** | `f64` mapping | Sliders use a symmetric log mapper (`slider_symlog_f64`) to handle inputs from $T = 10^{-4}$ to $10^{20}$ without overflow. |
+
 ## Terms
 
 | term | meaning |

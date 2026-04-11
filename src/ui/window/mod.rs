@@ -157,8 +157,8 @@ pub fn run(
         last_rendered_epoch:    0,
         last_rendered_residual: f64::MAX, // force field render on first frame
         field_force_redraw:     true,
-        title: "anytimeuniverse".to_string(),
-        title_text: "anytimeuniverse".to_string(),
+        title: format!("anytimeuniverse {}", env!("CARGO_PKG_VERSION")),
+        title_text: format!("anytimeuniverse {}", env!("CARGO_PKG_VERSION")),
     };
     let _ = app
         .sim_handle
@@ -186,3 +186,61 @@ include!("app.rs");
 include!("app_handler.rs");
 pub mod space_strategy_engine;
 pub mod synth_engine;
+
+/// Format a speed value (T/s) for display, filling the text box.
+/// Same magnitude-aware logic as format_time_text. " T/s" is 4 chars
+/// so we get ~16 chars for sign+digits, targeting 20 total.
+pub fn format_speed_text(v: f64) -> String {
+    let av = v.abs();
+    let neg = v < 0.0;
+    let s = if neg { "-" } else { "" };
+    if av < 1e-4 {
+        "0.00 T/s".to_string()
+    } else if av < 10.0 {
+        format!("{}{:.4} T/s", s, av)
+    } else if av < 100.0 {
+        format!("{}{:.3} T/s", s, av)
+    } else if av < 1_000.0 {
+        format!("{}{:.2} T/s", s, av)
+    } else if av < 10_000.0 {
+        format!("{}{:.1} T/s", s, av)
+    } else if av < if neg { 1e15 } else { 1e16 } {
+        format!("{}{:.0} T/s", s, av)
+    } else {
+        let e = av.log10().floor() as i32;
+        let m = av / 10f64.powi(e);
+        if neg {
+            format!("-{:.10}e{} T/s", m, e)
+        } else {
+            format!("{:.11}e{} T/s", m, e)
+        }
+    }
+}
+/// Uses full decimal precision scaled to magnitude, switching to scientific
+/// notation only when the integer representation would overflow (~18 chars).
+pub fn format_time_text(t: f64) -> String {
+    let av = t.abs();
+    let neg = t < 0.0;
+    let s = if neg { "-" } else { "" };
+    if av < 1e-4 {
+        "0.0 T".to_string()
+    } else if av < 10.0 {
+        format!("{}{:.4} T", s, av)
+    } else if av < 100.0 {
+        format!("{}{:.3} T", s, av)
+    } else if av < 1_000.0 {
+        format!("{}{:.2} T", s, av)
+    } else if av < 10_000.0 {
+        format!("{}{:.1} T", s, av)
+    } else if av < if neg { 1e17 } else { 1e18 } {
+        format!("{}{:.0} T", s, av)
+    } else {
+        let e = av.log10().floor() as i32;
+        let m = av / 10f64.powi(e);
+        if neg {
+            format!("-{:.12}e{} T", m, e)
+        } else {
+            format!("{:.13}e{} T", m, e)
+        }
+    }
+}

@@ -494,7 +494,7 @@ impl ApplicationHandler for App {
                                     4 => 1_000.0,
                                     _ => 1_000_000.0,
                                 };
-                                self.custom_speed = self.wave_speed as f64; // keep slider in sync
+                                self.custom_speed = self.wave_speed; // keep slider in sync
                                 let _ = self
                                     .sim_handle
                                     .cmd_tx
@@ -534,13 +534,32 @@ impl ApplicationHandler for App {
                             | winit::keyboard::KeyCode::ArrowDown => {
                                 // Step through symmetric speed ladder crossing zero (pause)
                                 const LADDER: &[f64] = &[
-                                    -1e12, -1e11, -1e10, -1e9, -1e8, -1e7,
-                                    -1_000_000.0, -1_000.0, -100.0, -10.0, -1.0, -0.25,
+                                    -1e18, -5e17, -2e17, -1e17, -5e16, -2e16, -1e16,
+                                    -5e15, -2e15, -1e15, -5e14, -2e14, -1e14,
+                                    -5e13, -2e13, -1e13, -5e12, -2e12, -1e12,
+                                    -5e11, -2e11, -1e11, -5e10, -2e10, -1e10,
+                                    -5e9, -2e9, -1e9, -5e8, -2e8, -1e8,
+                                    -5e7, -2e7, -1e7, -5e6, -2e6, -1_000_000.0,
+                                    -500_000.0, -200_000.0, -100_000.0,
+                                    -50_000.0, -20_000.0, -10_000.0,
+                                    -5_000.0, -2_000.0, -1_000.0,
+                                    -500.0, -200.0, -100.0,
+                                    -50.0, -20.0, -10.0, -5.0, -2.0, -1.0, -0.5, -0.25,
                                     0.0, // pause
-                                    0.25, 1.0, 10.0, 100.0, 1_000.0, 1_000_000.0,
-                                    1e7, 1e8, 1e9, 1e10, 1e11, 1e12,
+                                    0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
+                                    100.0, 200.0, 500.0,
+                                    1_000.0, 2_000.0, 5_000.0,
+                                    10_000.0, 20_000.0, 50_000.0,
+                                    100_000.0, 200_000.0, 500_000.0,
+                                    1_000_000.0, 2e6, 5e6,
+                                    1e7, 2e7, 5e7, 1e8, 2e8, 5e8,
+                                    1e9, 2e9, 5e9, 1e10, 2e10, 5e10,
+                                    1e11, 2e11, 5e11, 1e12, 2e12, 5e12,
+                                    1e13, 2e13, 5e13, 1e14, 2e14, 5e14,
+                                    1e15, 2e15, 5e15, 1e16, 2e16, 5e16,
+                                    1e17, 2e17, 5e17, 1e18,
                                 ];
-                                let cur = self.wave_speed as f64;
+                                let cur = self.wave_speed;
                                 // Find closest ladder index
                                 let idx = LADDER
                                     .iter()
@@ -563,8 +582,9 @@ impl ApplicationHandler for App {
                                     self.is_paused = false;
                                     let _ = self.sim_handle.cmd_tx.send(Command::Resume);
                                 }
-                                self.wave_speed = new_speed as f32;
+                                self.wave_speed = new_speed;
                                 self.custom_speed = new_speed;
+                                self.speed_text = crate::ui::window::format_speed_text(new_speed);
                                 if let Some(state) = &self.state {
                                     state.window.request_redraw();
                                 }
@@ -589,7 +609,7 @@ impl ApplicationHandler for App {
                 let mut pending_reset = None;
                 let mut pending_title = None;
 
-                let dt = self.last_frame.elapsed().as_secs_f32();
+                let dt = self.last_frame.elapsed().as_secs_f64();
                 let _dt = dt; // clear warning
                 self.last_frame = std::time::Instant::now();
 
@@ -610,7 +630,7 @@ impl ApplicationHandler for App {
                     .window
                     .current_monitor()
                     .and_then(|m| m.refresh_rate_millihertz())
-                    .map(|mhz| (mhz as f32 / 1000.0).round())
+                    .map(|mhz| (mhz as f64 / 1000.0).round())
                     .unwrap_or(60.0);
 
                 let raw_input = state.egui_state.take_egui_input(&state.window);
@@ -1219,41 +1239,32 @@ impl ApplicationHandler for App {
                                                 )));
                                                 egui::TextEdit::store_state(ui.ctx(), speed_action.id, state);
                                             }
-                                        if speed_action.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) || speed_action.lost_focus() {
-                                            if let Ok(v) = self.speed_text.trim().trim_end_matches("T/s").trim().parse::<f64>() {
-                                                self.custom_speed = v.clamp(-1e12, 1e12);
-                                                self.wave_speed = self.custom_speed as f32;
+                                        if speed_action.changed() {
+                                            let clean = self.speed_text.trim().trim_end_matches("T/s").trim();
+                                            let v = if clean.is_empty() || clean == "-" { Ok(0.0) } else { clean.parse::<f64>() };
+                                            if let Ok(val) = v {
+                                                self.custom_speed = val;
+                                                self.wave_speed = self.custom_speed;
                                             }
-                                            let av2 = self.custom_speed.abs();
-                                            let sign2 = if self.custom_speed < 0.0 { "-" } else { "" };
-                                            self.speed_text = if av2 < 0.01 { "0.00 T/s".to_string() }
-                                                else if av2 < 10.0 { format!("{}{:.2} T/s", sign2, av2) }
-                                                else { format!("{}{:.0} T/s", sign2, av2) };
+                                        }
+                                        if speed_action.lost_focus() {
+                                            self.speed_text = crate::ui::window::format_speed_text(self.custom_speed);
                                         } else if !speed_action.has_focus() {
-                                            let av = self.custom_speed.abs();
-                                            let sign = if self.custom_speed < 0.0 { "-" } else { "" };
-                                            self.speed_text = if av < 0.01 { "0.00 T/s".to_string() }
-                                                else if av < 10.0 { format!("{}{:.2} T/s", sign, av) }
-                                                else { format!("{}{:.0} T/s", sign, av) };
+                                            self.speed_text = crate::ui::window::format_speed_text(self.custom_speed);
                                         }
                                     });
                                     ui.add_space(GAP_XS);
                                     let r = crate::ui::widgets::slider_symlog_f64(self.theme.provider(),
                                         ui,
                                         &mut self.custom_speed,
-                                        1e12f64,
+                                        1e18f64 / 0.95,
                                         "",
                                     );
-                                    let av = self.custom_speed.abs();
-                                    let sign = if self.custom_speed < 0.0 { "-" } else { "" };
-                                    let val_str = if av < 0.01 { "0.00 T/s".to_string() }
-                                        else if av < 10.0 { format!("{}{:.2} T/s", sign, av) }
-                                        else { format!("{}{:.0} T/s", sign, av) };
-                                    if r.changed() { self.speed_text = val_str; }
+                                    if r.changed() { self.speed_text = crate::ui::window::format_speed_text(self.custom_speed); }
                                     r
                                 }).inner;
                                 if speed_resp.changed() {
-                                    self.wave_speed = self.custom_speed as f32;
+                                    self.wave_speed = self.custom_speed;
                                 }
 
                                 ui.add_space(GAP_MD);
@@ -1261,7 +1272,7 @@ impl ApplicationHandler for App {
                                 // Display value is full T = epoch*P + residual, max ±i64::MAX×PERIOD
                                 const PERIOD_SL: f64 = std::f64::consts::TAU / 0.1;
                                 let t_display_max = (i64::MAX as f64) * PERIOD_SL;
-                                let mut t_display = (self.t_epoch as f64 * PERIOD_SL + self.t_residual).clamp(-t_display_max, t_display_max);
+                                let mut t_display = self.t_epoch as f64 * PERIOD_SL + self.t_residual;
                                 let time_resp = ui.vertical(|ui| {
                                     ui.style_mut().spacing.item_spacing.y = GAP_XS;
                                     let lbl_galley = ui.painter().layout_no_wrap("TIME TRAVEL".to_string(), egui::FontId::monospace(8.0), egui::Color32::BLACK);
@@ -1269,8 +1280,6 @@ impl ApplicationHandler for App {
                                     let btn_side = KEY_CAP_SIDE;
 
                                     let field_h = btn_side + GAP_SM + label_h;
-                                    let av = t_display.abs();
-                                    let sign = if t_display < 0.0 { "-" } else { "" };
                                     ui.horizontal(|ui| {
                                         ui.style_mut().spacing.item_spacing.x = GAP_SM;
                                         {
@@ -1311,41 +1320,30 @@ impl ApplicationHandler for App {
                                                 )));
                                                 egui::TextEdit::store_state(ui.ctx(), time_action.id, state);
                                             }
-                                        if time_action.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) || time_action.lost_focus() {
-                                            if let Ok(v) = self.time_text.trim().trim_end_matches('T').trim().parse::<f64>() {
-                                                let new_t = v.clamp(-t_display_max, t_display_max);
+                                        if time_action.changed() {
+                                            let clean = self.time_text.trim().trim_end_matches('T').trim();
+                                            let v = if clean.is_empty() || clean == "-" { Ok(0.0) } else { clean.parse::<f64>() };
+                                            if let Ok(new_t) = v {
                                                 let new_residual = new_t.rem_euclid(PERIOD_SL);
                                                 let new_epoch = ((new_t - new_residual) / PERIOD_SL).round() as i64;
                                                 self.t_epoch = new_epoch;
                                                 self.t_residual = new_residual;
-
-                                                let av2 = new_t.abs();
-                                                let sign2 = if new_t < 0.0 { "-" } else { "" };
-                                                self.time_text = if av2 < 0.01 { "0.0 T".to_string() }
-                                                    else if av2 < 1e5 { format!("{}{:.1} T", sign2, av2) }
-                                                    else { let e = av2.log10().floor() as i32; format!("{}{:.2}e{} T", sign2, av2 / 10f64.powi(e), e) };
-                                            } else {
-                                                self.time_text = if av < 0.01 { "0.0 T".to_string() }
-                                                    else if av < 1e5 { format!("{}{:.1} T", sign, av) }
-                                                    else { let e = av.log10().floor() as i32; format!("{}{:.2}e{} T", sign, av / 10f64.powi(e), e) };
                                             }
+                                        }
+                                        if time_action.lost_focus() {
+                                            self.time_text = crate::ui::window::format_time_text(self.t_epoch as f64 * PERIOD_SL + self.t_residual);
                                         } else if !time_action.has_focus() {
-                                            self.time_text = if av < 0.01 { "0.0 T".to_string() }
-                                                else if av < 1e5 { format!("{}{:.1} T", sign, av) }
-                                                else { let e = av.log10().floor() as i32; format!("{}{:.2}e{} T", sign, av / 10f64.powi(e), e) };
+                                            self.time_text = crate::ui::window::format_time_text(t_display);
                                         }
                                     });
                                     ui.add_space(GAP_XS);
                                     let r = crate::ui::widgets::slider_symlog_f64(self.theme.provider(),
                                         ui,
                                         &mut t_display,
-                                        t_display_max,
+                                        t_display_max / 0.95,
                                         "",
                                     );
-                                    let val_str = if av < 0.01 { "0.0 T".to_string() }
-                                        else if av < 1e5 { format!("{}{:.1} T", sign, av) }
-                                        else { let e = av.log10().floor() as i32; format!("{}{:.2}e{} T", sign, av / 10f64.powi(e), e) };
-                                    if r.changed() { self.time_text = val_str; }
+                                    if r.changed() { self.time_text = crate::ui::window::format_time_text(t_display); }
                                     r
                                 }).inner;
 
@@ -1366,7 +1364,7 @@ impl ApplicationHandler for App {
                                     const PERIOD: f64 = std::f64::consts::TAU / 0.1;
                                     let t_now = self.t_epoch as f64 * PERIOD + self.t_residual;
                                     let window = (10.0 * std::f64::consts::TAU / 0.005)
-                                        .max(self.wave_speed.abs() as f64 * 4.0);
+                                        .max(self.wave_speed.abs() * 4.0);
                                     const SAMPLES: usize = 240;
                                     self.history.clear();
                                     for i in 0..SAMPLES {
@@ -1474,7 +1472,7 @@ impl ApplicationHandler for App {
                         4 => 1_000.0,
                         _ => 1_000_000.0,
                     };
-                    self.custom_speed = self.wave_speed as f64; // keep slider in sync
+                    self.custom_speed = self.wave_speed; // keep slider in sync
                     let _ = self
                         .sim_handle
                         .cmd_tx
@@ -1482,13 +1480,32 @@ impl ApplicationHandler for App {
                 }
                 if arrow_up_req || arrow_down_req {
                     const LADDER: &[f64] = &[
-                        -1e12, -1e11, -1e10, -1e9, -1e8, -1e7,
-                        -1_000_000.0, -1_000.0, -100.0, -10.0, -1.0, -0.25,
+                        -1e18, -5e17, -2e17, -1e17, -5e16, -2e16, -1e16,
+                        -5e15, -2e15, -1e15, -5e14, -2e14, -1e14,
+                        -5e13, -2e13, -1e13, -5e12, -2e12, -1e12,
+                        -5e11, -2e11, -1e11, -5e10, -2e10, -1e10,
+                        -5e9, -2e9, -1e9, -5e8, -2e8, -1e8,
+                        -5e7, -2e7, -1e7, -5e6, -2e6, -1_000_000.0,
+                        -500_000.0, -200_000.0, -100_000.0,
+                        -50_000.0, -20_000.0, -10_000.0,
+                        -5_000.0, -2_000.0, -1_000.0,
+                        -500.0, -200.0, -100.0,
+                        -50.0, -20.0, -10.0, -5.0, -2.0, -1.0, -0.5, -0.25,
                         0.0,
-                        0.25, 1.0, 10.0, 100.0, 1_000.0, 1_000_000.0,
-                        1e7, 1e8, 1e9, 1e10, 1e11, 1e12,
+                        0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
+                        100.0, 200.0, 500.0,
+                        1_000.0, 2_000.0, 5_000.0,
+                        10_000.0, 20_000.0, 50_000.0,
+                        100_000.0, 200_000.0, 500_000.0,
+                        1_000_000.0, 2e6, 5e6,
+                        1e7, 2e7, 5e7, 1e8, 2e8, 5e8,
+                        1e9, 2e9, 5e9, 1e10, 2e10, 5e10,
+                        1e11, 2e11, 5e11, 1e12, 2e12, 5e12,
+                        1e13, 2e13, 5e13, 1e14, 2e14, 5e14,
+                        1e15, 2e15, 5e15, 1e16, 2e16, 5e16,
+                        1e17, 2e17, 5e17, 1e18,
                     ];
-                    let cur = self.wave_speed as f64;
+                    let cur = self.wave_speed;
                     let idx = LADDER.iter().enumerate()
                         .min_by(|(_, a), (_, b)| ((**a - cur).abs()).partial_cmp(&((**b - cur).abs())).unwrap())
                         .map(|(i, _)| i).unwrap_or(7);
@@ -1501,13 +1518,9 @@ impl ApplicationHandler for App {
                         self.is_paused = false;
                         let _ = self.sim_handle.cmd_tx.send(Command::Resume);
                     }
-                    self.wave_speed = new_speed as f32;
+                    self.wave_speed = new_speed;
                     self.custom_speed = new_speed;
-                    let av = new_speed.abs();
-                    let sign = if new_speed < 0.0 { "-" } else { "" };
-                    self.speed_text = if av < 0.01 { "0.00 T/s".to_string() }
-                        else if av < 10.0 { format!("{}{:.2} T/s", sign, av) }
-                        else { format!("{}{:.0} T/s", sign, av) };
+                    self.speed_text = crate::ui::window::format_speed_text(new_speed);
                     state.window.request_redraw();
                 }
                 if arrow_left_req || arrow_right_req {
@@ -1531,11 +1544,7 @@ impl ApplicationHandler for App {
                     }
                     
                     let new_t = self.t_epoch as f64 * PERIOD + self.t_residual;
-                    let av_t = new_t.abs();
-                    let sign_t = if new_t < 0.0 { "-" } else { "" };
-                    self.time_text = if av_t < 0.01 { "0.0 T".to_string() }
-                        else if av_t < 1e5 { format!("{}{:.1} T", sign_t, av_t) }
-                        else { let e = av_t.log10().floor() as i32; format!("{}{:.2}e{} T", sign_t, av_t / 10f64.powi(e), e) };
+                    self.time_text = crate::ui::window::format_time_text(new_t);
                     state.window.request_redraw();
                 }
                 state
@@ -1578,8 +1587,8 @@ impl ApplicationHandler for App {
                 const FREQ_MIN: f64 = 0.1;
                 const PERIOD: f64 = std::f64::consts::TAU / FREQ_MIN; // ≈ 62.83
                 if !self.is_paused {
-                    let frame_dt = 1.0 / self.fps.max(1.0) as f64;
-                    self.t_residual += frame_dt * self.wave_speed as f64;
+                    let frame_dt = 1.0 / self.fps.max(1.0);
+                    self.t_residual += frame_dt * self.wave_speed;
                     // Normalise: residual must stay in [0, PERIOD)
                     if self.t_residual >= PERIOD {
                         let extra = (self.t_residual / PERIOD).floor() as i64;

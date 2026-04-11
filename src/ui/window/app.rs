@@ -17,7 +17,7 @@ struct App {
     color_data: crate::engine::color_math::ColorData,
     old_colors: Vec<egui::Color32>,
     last_frame: std::time::Instant,
-    fps: f32,
+    fps: f64,
     t_per_sec: f64,        // T units advanced per real second
     last_tps_t_epoch: i64,
     last_tps_t_residual: f64,
@@ -49,7 +49,7 @@ struct App {
     /// Fractional phase within the current period: always in [0, P).
     /// This is what gets sent to the GPU as f32.
     t_residual: f64,
-    wave_speed: f32,  // T units per second
+    wave_speed: f64,  // T units per second
     custom_speed: f64, // user-typed T/s (active when speed == 6)
     speed_text: String,
     time_text: String,

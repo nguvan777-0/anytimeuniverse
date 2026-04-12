@@ -21,7 +21,7 @@ struct RenderState {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub enum Theme { Rect, Dew, Future }
+pub enum Theme { Rect, Metallic, Dew, Future }
 
 impl Theme {
     pub fn provider(self) -> &'static dyn crate::ui::theme::ThemeProvider {
@@ -29,6 +29,7 @@ impl Theme {
             Theme::Rect   => &crate::ui::rect::Rect,
             Theme::Dew    => &crate::ui::dew::Dew,
             Theme::Future => &crate::ui::future::Future,
+            Theme::Metallic => &crate::ui::metallic::Metallic,
         }
     }
 }

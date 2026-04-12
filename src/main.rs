@@ -141,7 +141,7 @@ fn main() {
 
     let sim_handle = spawn_sim();
 
-    println!("[ world ] seed: {}  noise: {:.3}", seed, background_noise);
+    println!("[ world ] seed: {}", seed);
 
     // GPU window — the render loop is self-contained and VSync-paced.
     // T is advanced in the frame callback; the sim thread is just a stats ticker.
@@ -176,4 +176,4 @@ impl Lcg {
         self.next_u32() as f32 / u32::MAX as f32
     }
 }
- 
+

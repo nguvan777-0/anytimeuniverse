@@ -71,7 +71,7 @@ pub fn apply_theme(ctx: &Context) {
     ctx.set_global_style(style);
 }
 
-pub fn text_field_edit(ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response {
+pub fn text_field_edit(theme: &dyn crate::ui::theme::ThemeProvider, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response {
     let field_w = ui.available_width();
     let padding = egui::vec2(GAP_MD, GAP_SM);
     let field_h = if height > 0.0 { height } else { font_size + padding.y * 2.0 + 2.0 };
@@ -97,7 +97,10 @@ pub fn text_field_edit(ui: &mut Ui, text: &mut String, font_size: f32, height: f
         .font(egui::FontId::monospace(font_size))
         .horizontal_align(egui::Align::Center)
         .frame(egui::Frame::NONE);
-    child.add(text_edit)
+    let mut te_resp = child.add(text_edit);
+    crate::ui::widgets::maintain_text_selection_cache(ui.ctx(), &te_resp, text, rect);
+    if crate::ui::widgets::text_field_context_menu(theme, &te_resp, te_resp.id, text) { te_resp.mark_changed(); }
+    te_resp
 }
 
 pub fn section_toggle_btn(ui: &mut Ui) -> Response {
@@ -185,7 +188,7 @@ pub fn button_w(ui: &mut Ui, text: &str, min_w: f32) -> Response {
 
 /// A keycap badge — sunken border, monospace label, compact. Returns a clickable Response.
 /// Used in the keyboard cheatsheet.
-pub fn key_cap(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> Response {
+pub fn key_cap(ui: &mut Ui, text: &str, min_side: f32, font_size: f32, is_pressed: bool) -> Response {
     let galley = ui.painter().layout_no_wrap(
         text.to_string(),
         FontId::monospace(font_size),
@@ -196,7 +199,7 @@ pub fn key_cap(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> Respon
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     if ui.is_rect_visible(rect) {
         let p = ui.painter();
-        let is_down = response.is_pointer_button_down_on();
+        let is_down = response.is_pointer_button_down_on() || is_pressed;
         let is_hov  = response.hovered();
         let fg = TERM_GREEN;
         if !is_down && !is_hov {
@@ -271,7 +274,7 @@ pub fn slider_log_f64(ui: &mut Ui, value: &mut f64, range: std::ops::RangeInclus
     root_response
 }
 
-pub fn key_cap_rotated(ui: &mut egui::Ui, text: &str, angle: f32, min_side: f32, font_size: f32) -> egui::Response {
+pub fn key_cap_rotated(ui: &mut egui::Ui, text: &str, angle: f32, min_side: f32, font_size: f32, is_pressed: bool) -> egui::Response {
     let galley = ui.painter().layout_no_wrap(
         text.to_string(),
         egui::FontId::monospace(font_size),
@@ -281,7 +284,7 @@ pub fn key_cap_rotated(ui: &mut egui::Ui, text: &str, angle: f32, min_side: f32,
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     if ui.is_rect_visible(rect) {
         let p = ui.painter();
-        let is_down = response.is_pointer_button_down_on();
+        let is_down = response.is_pointer_button_down_on() || is_pressed;
         let is_hov  = response.hovered();
         let _bg = TERM_BG;
         let fg = TERM_GREEN;
@@ -316,7 +319,113 @@ pub fn key_cap_rotated(ui: &mut egui::Ui, text: &str, angle: f32, min_side: f32,
 pub struct Rect;
 
 impl crate::ui::theme::ThemeProvider for Rect {
-    fn apply_theme(&self, ctx: &Context) { apply_theme(ctx); }
+    fn palette(&self) -> crate::ui::theme::ThemePalette {
+        crate::ui::theme::ThemePalette {
+            is_terminal_style: true,
+            panel_margin: 6.0,
+            panel_text_color: egui::Color32::from_rgb(20, 240, 50),
+            hash_stat_color: egui::Color32::from_rgb(20, 240, 50),
+            hash_selection_color: TERM_GREEN,
+            title_bar_text_color: egui::Color32::from_rgb(20, 240, 50),
+            title_bar_button_color: egui::Color32::from_rgb(20, 240, 50),
+            tracker_color: egui::Color32::from_rgb(20, 240, 50),
+            chart_axis_color: egui::Color32::from_rgb(0, 100, 0),
+            remove_tracker_border_on_hover: true,
+        }
+    }
+
+    fn apply_theme(&self, ctx: &Context) {
+        apply_theme(ctx);
+        let term_bg   = egui::Color32::BLACK;
+        let term_green = egui::Color32::from_rgb(0, 230, 65);
+        let term_dim  = term_green;
+        let mut visuals = egui::Visuals::dark();
+        visuals.panel_fill = term_bg;
+        visuals.window_fill = term_bg;
+        visuals.selection.bg_fill = term_dim;
+        visuals.selection.stroke = egui::Stroke::new(1.0, term_bg);
+        visuals.widgets.noninteractive.bg_fill = term_bg;
+        visuals.widgets.noninteractive.weak_bg_fill = term_bg;
+        visuals.widgets.inactive.bg_fill = term_bg;
+        visuals.widgets.inactive.weak_bg_fill = term_bg;
+        visuals.widgets.hovered.bg_fill = term_dim;
+        visuals.widgets.hovered.weak_bg_fill = term_dim;
+        visuals.widgets.active.bg_fill = term_dim;
+        visuals.widgets.active.weak_bg_fill = term_dim;
+        visuals.override_text_color = Some(term_green);
+        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, term_dim);
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, term_green);
+        visuals.widgets.active.bg_stroke  = egui::Stroke::new(1.0, term_green);
+        visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::ZERO;
+        visuals.widgets.inactive.corner_radius = egui::CornerRadius::ZERO;
+        visuals.widgets.hovered.corner_radius  = egui::CornerRadius::ZERO;
+        visuals.widgets.active.corner_radius   = egui::CornerRadius::ZERO;
+        visuals.window_corner_radius = egui::CornerRadius::ZERO;
+        visuals.menu_corner_radius   = egui::CornerRadius::ZERO;
+        visuals.window_stroke = egui::Stroke::new(1.0, term_green);
+        visuals.popup_shadow = egui::Shadow::NONE;
+        ctx.set_visuals(visuals);
+        let mut fonts = egui::FontDefinitions::default();
+        if let Some(mono) = fonts.families.get(&egui::FontFamily::Monospace).cloned() {
+            fonts.families.insert(egui::FontFamily::Proportional, mono);
+        }
+        ctx.set_fonts(fonts);
+    }
+
+    fn edit_popup_visuals(&self, visuals: &mut egui::Visuals) {
+        visuals.window_fill = TERM_BG;
+        visuals.panel_fill = TERM_BG;
+        visuals.window_stroke = egui::Stroke::new(1.0, TERM_GREEN);
+        visuals.popup_shadow = egui::Shadow::NONE;
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, TERM_GREEN);
+
+        visuals.widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
+        visuals.widgets.hovered.weak_bg_fill = egui::Color32::TRANSPARENT;
+        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, TERM_GREEN);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, TERM_GREEN);
+        
+        visuals.widgets.active.bg_fill = egui::Color32::TRANSPARENT;
+        visuals.widgets.active.weak_bg_fill = egui::Color32::TRANSPARENT;
+        visuals.widgets.active.bg_stroke = egui::Stroke::new(1.0, TERM_GREEN);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, TERM_GREEN);
+    }
+
+    fn edit_popup_spacing(&self, spacing: &mut egui::Spacing) {
+        spacing.button_padding = egui::vec2(4.0, 2.0);
+        spacing.item_spacing = egui::vec2(8.0, 0.0);
+        spacing.window_margin = egui::Margin::same(2);
+        spacing.menu_margin = egui::Margin::same(2);
+        spacing.icon_spacing = 8.0;
+    }
+
+    fn setup_frame(&self, _ctx: &egui::Context) {}
+
+    fn paint_sim_area_border(&self, ui: &mut egui::Ui, sim_rect: egui::Rect) {
+        ui.ctx().layer_painter(egui::LayerId::background()).rect_stroke(
+            sim_rect,
+            egui::CornerRadius::ZERO,
+            egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 230, 65)),
+            egui::StrokeKind::Outside,
+        );
+    }
+
+    fn sim_area_padding(&self) -> f32 { 4.0 }
+
+    
+    fn paint_hash_bg(&self, p: &egui::Painter, rect: egui::Rect) {
+        p.rect_filled(rect, egui::CornerRadius::ZERO, TERM_BG);
+        p.rect_stroke(rect, egui::CornerRadius::ZERO, egui::Stroke::new(1.0, TERM_GREEN), egui::StrokeKind::Outside);
+    }
+    fn paint_hash_copy_btn(&self, ui: &mut egui::Ui, btn_rect: egui::Rect, is_down: bool, is_hovered: bool) -> f32 {
+        let bg = TERM_BG;
+        let fg = TERM_GREEN;
+        ui.painter().rect_filled(btn_rect, egui::CornerRadius::ZERO, bg);
+        if !is_down && !is_hovered {
+            ui.painter().line_segment([btn_rect.left_top(), btn_rect.left_bottom()], egui::Stroke::new(1.0, fg));
+        }
+        if is_down { 1.0 } else { 0.0 }
+    }
+
     fn draw_sunken(&self, painter: &Painter, rect: egui::Rect) { draw_sunken(painter, rect); }
 
     fn draw_space_strategy_bg(&self, ui: &mut Ui, rect: egui::Rect) {
@@ -352,9 +461,8 @@ impl crate::ui::theme::ThemeProvider for Rect {
     }
 
     fn section_toggle_btn(&self, ui: &mut Ui) -> Response { section_toggle_btn(ui) }
-    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32) -> Response { key_cap(ui, text, side, font_size) }
-    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32) -> Response { key_cap_rotated(ui, text, angle, side, font_size) }
-    fn collapsible_header(&self, ui: &mut Ui, text: &str, is_open: bool) -> bool { crate::ui::widgets::collapsible_header(self, ui, text, is_open) }
+    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32, is_pressed: bool) -> Response { key_cap(ui, text, side, font_size, is_pressed) }
+    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32, is_pressed: bool) -> Response { key_cap_rotated(ui, text, angle, side, font_size, is_pressed) }
     fn paint_slider_track(&self, ui: &mut Ui, track_rect: egui::Rect, center_x: f32) {
         let p = ui.painter();
         draw_sunken(p, track_rect);
@@ -427,7 +535,7 @@ impl crate::ui::theme::ThemeProvider for Rect {
         }
     }
     fn section_label(&self, ui: &mut Ui, text: &str) -> Response { section_label(ui, text) }
-    fn text_field_edit(&self, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response { text_field_edit(ui, text, font_size, height) }
+    fn text_field_edit(&self, ui: &mut Ui, text: &mut String, font_size: f32, height: f32) -> Response { text_field_edit(self, ui, text, font_size, height) }
 
     fn button_text_color(&self) -> egui::Color32 {
         TERM_GREEN
@@ -441,25 +549,8 @@ impl crate::ui::theme::ThemeProvider for Rect {
         if is_down { 1.0 } else { 0.0 }
     }
 
-    fn key_cap_text_color(&self) -> egui::Color32 {
-        TERM_GREEN
-    }
 
-    fn paint_key_cap(&self, p: &egui::Painter, rect: egui::Rect, is_down: bool, is_hovered: bool) {
-        if !is_down && !is_hovered {
-            draw_outset(p, rect);
-        }
-    }
 
-    fn chart_bg(&self) -> egui::Color32 {
-        egui::Color32::BLACK
-    }
 
-    fn chart_axis_color(&self) -> egui::Color32 {
-        TERM_GREEN.linear_multiply(0.6)
-    }
 
-    fn remove_tracker_border_on_hover(&self) -> bool {
-        true
-    }
 }

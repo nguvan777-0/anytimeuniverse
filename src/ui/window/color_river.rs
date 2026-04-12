@@ -1,5 +1,5 @@
 {
-if self.theme.provider().collapsible_header(ui, "COLOR RIVER", self.show_branch) {
+if crate::ui::widgets::collapsible_header(self.theme.provider(), ui, "COLOR RIVER", self.show_branch) {
     self.show_branch = !self.show_branch;
 }
 

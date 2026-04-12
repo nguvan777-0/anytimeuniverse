@@ -4,7 +4,7 @@ pub struct SpaceStrategyEngine {
     points: Vec<StrategyPoint>,
     is_scanning: bool,
     baseline_t: f64,
-    rot: [[f32; 3]; 3],
+    rotation: [[f32; 3]; 3],
     ctrl: [f32; 2],       // joystick in unit disk: direction + magnitude = spin axis + speed
     ctrl_saved: [f32; 2],
 }
@@ -25,7 +25,7 @@ impl Default for SpaceStrategyEngine {
             points: Vec::new(),
             is_scanning: false,
             baseline_t: 0.0,
-            rot: mat_mul(&rot_x(0.21), &rot_y(-0.42)),
+            rotation: mat_mul(&rot_x(0.21), &rot_y(-0.42)),
             ctrl: [0.25, 0.0],
             ctrl_saved: [0.25, 0.0],
         }
@@ -33,6 +33,12 @@ impl Default for SpaceStrategyEngine {
 }
 
 impl SpaceStrategyEngine {
+    pub fn reset_view(&mut self) {
+        self.rotation = mat_mul(&rot_x(0.21), &rot_y(-0.42));
+        self.ctrl_saved = [0.25, 0.0];
+        self.ctrl = [0.25, 0.0];
+    }
+
     #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.points.is_empty() && !self.is_scanning
@@ -138,7 +144,7 @@ impl SpaceStrategyEngine {
         let speed = vec_len(omega);
         if speed > 1e-4 {
             let axis = [omega[0]/speed, omega[1]/speed, omega[2]/speed];
-            self.rot = mat_mul(&axis_angle_mat(axis, speed), &self.rot);
+            self.rotation = mat_mul(&axis_angle_mat(axis, speed), &self.rotation);
             ui.ctx().request_repaint();
         }
 
@@ -147,7 +153,7 @@ impl SpaceStrategyEngine {
         let scale = (rect.width().min(rect.height()) / 2.0) * 0.85;
 
         let project = |x: f32, y: f32, z: f32| -> (Pos2, f32) {
-            let r = mat_vec(&self.rot, [x, y, z]);
+            let r = mat_vec(&self.rotation, [x, y, z]);
             (Pos2::new(center.x + r[0] * scale, center.y - r[1] * scale), r[2])
         };
 
@@ -172,7 +178,7 @@ impl SpaceStrategyEngine {
 
         for (i, pos, depth) in projected {
             let p = &self.points[i];
-            let color = wave_colors.get(p.branch).copied().unwrap_or(theme.tracker_color());
+            let color = wave_colors.get(p.branch).copied().unwrap_or(theme.palette().tracker_color);
             let alpha = ((depth + 1.5) / 3.0).clamp(0.4, 1.0);
             painter.circle_filled(pos, 2.5, color.linear_multiply(alpha));
         }
@@ -180,7 +186,7 @@ impl SpaceStrategyEngine {
         // ── Reset Tracker — bottom-left ──────────────────────────────────────
         const IND_R: f32 = 14.0;
         let ind_center = Pos2::new(rect.left() + IND_R + 8.0, rect.bottom() - IND_R - 8.0);
-        let text_color = theme.tracker_color();
+        let text_color = theme.palette().tracker_color;
         let ind_color = text_color.linear_multiply(0.6);
         let hover_color = text_color;
 
@@ -197,7 +203,7 @@ impl SpaceStrategyEngine {
         let bg_color = text_color.linear_multiply(0.05);
 
         let stroke = if center_dot_resp.hovered() { 
-            if theme.remove_tracker_border_on_hover() {
+            if theme.palette().remove_tracker_border_on_hover {
                 egui::Stroke::NONE
             } else {
                 egui::Stroke::new(1.0, hover_color) 
@@ -211,7 +217,7 @@ impl SpaceStrategyEngine {
         painter.circle_stroke(ind_center, IND_R, stroke);
 
         if center_dot_resp.clicked() {
-            self.rot = mat_mul(&rot_x(0.21), &rot_y(-0.42));
+            self.rotation = mat_mul(&rot_x(0.21), &rot_y(-0.42));
             self.ctrl_saved = [0.25, 0.0];
             self.ctrl = [0.25, 0.0];
         }
@@ -219,7 +225,7 @@ impl SpaceStrategyEngine {
         // Space out the miniature trackball
         let mini_scale = IND_R * 0.85;
         let mini_project = |x: f32, y: f32, z: f32| -> (Pos2, f32) {
-            let r = mat_vec(&self.rot, [x, y, z]);
+            let r = mat_vec(&self.rotation, [x, y, z]);
             (Pos2::new(ind_center.x + r[0] * mini_scale, ind_center.y - r[1] * mini_scale), r[2])
         };
 
@@ -229,7 +235,7 @@ impl SpaceStrategyEngine {
         let alpha = ((depth + 1.0) / 2.0).clamp(0.2, 1.0);
         
         // Theme the dot dynamically: use the primary plot color or the theme's tracker text color
-        let base_dot_color = wave_colors.first().copied().unwrap_or(theme.tracker_color());
+        let base_dot_color = wave_colors.first().copied().unwrap_or(theme.palette().tracker_color);
         let dot_color = base_dot_color.linear_multiply(alpha);
         
         let is_paused = vec2_len(self.ctrl) < 0.05;

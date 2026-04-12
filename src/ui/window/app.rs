@@ -24,6 +24,7 @@ struct App {
     last_tps_update: std::time::Instant,
     pan_x: f32,
     pan_y: f32,
+    zoom: f32,
     show_branch: bool,
     show_branch_metrics: bool,
     take_screenshot: bool,
@@ -54,6 +55,9 @@ struct App {
     speed_text: String,
     time_text: String,
     seed_text: String,
+    moment_hash_text: String,
+    pending_hash_jump: Option<(i64, f64, f32, f32, f32)>,
+    pending_paste: Option<String>,
     title: String,
     title_text: String,
     /// CPU copy of the wave parameters so we can evaluate prominence analytically.
@@ -64,6 +68,10 @@ struct App {
     field_force_redraw:     bool,
     pending_fullscreen_toggle: bool,
     pending_minimize_time: Option<std::time::Instant>,
+    modifiers: winit::keyboard::ModifiersState,
+    sys_components: sysinfo::Components,
+    last_temp_refresh: std::time::Instant,
+    sys_temps: Vec<(String, f32)>,
 }
 
 /// Mirror of the shader's generation system — same hash, same accumulator.
@@ -140,9 +148,9 @@ impl App {
         self.background_noise = noise;
 
         if change_seed {
-            println!("[ world ] change channel to new seed: {} (noise: {:.3})", self.seed, noise);
+            println!("[ world ] change channel to new seed: {}", self.seed);
         } else {
-            println!("[ world ] rewind current seed: {} (noise: {:.3})", self.seed, noise);
+            println!("[ world ] rewind current seed: {}", self.seed);
         }
 
         let _ = self.sim_handle.cmd_tx.send(Command::Reset);
@@ -191,6 +199,7 @@ impl App {
         self.branch_density_dirty = false;
         self.pan_x = 0.0;
         self.pan_y = 0.0;
+        self.zoom = 1.0;
         self.last_projection_tick = 0;
         self.last_bounds_instant = None;
         self.circle_axes = ([0.0; 14], [0.0; 14], [0.0; 14]);

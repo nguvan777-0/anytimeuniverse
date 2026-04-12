@@ -233,7 +233,7 @@ pub fn draw_future_pill_base(ctx: &Context, p: &Painter, draw_rect: Rect, base_r
     draw_holographic_hover(ctx, p, draw_rect, r, 1.0);
 
     // Bottom future reflection (blue-shifted, lower half) - intensifies on hover
-    let glow_op = (155.0 * (1.0 - press_t * 0.65) + hover_t * 80.0).max(0.0).min(255.0) as u8;
+    let glow_op = (155.0 * (1.0 - press_t * 0.65) + hover_t * 80.0).clamp(0.0, 255.0) as u8;
     if glow_op > 0 {
         let glow = Rect::from_min_max(
             pos2(draw_rect.min.x + 1.5, draw_rect.center().y),
@@ -246,7 +246,7 @@ pub fn draw_future_pill_base(ctx: &Context, p: &Painter, draw_rect: Rect, base_r
     }
 
     // Top specular cap — very bright, hallmark of polished future - intensifies on hover
-    let hl_op = (215.0 * (1.0 - press_t * 0.55) + hover_t * 40.0).max(0.0).min(255.0) as u8;
+    let hl_op = (215.0 * (1.0 - press_t * 0.55) + hover_t * 40.0).clamp(0.0, 255.0) as u8;
     if hl_op > 0 {
         let hl = Rect::from_min_size(
             draw_rect.min + vec2(1.5, 1.0),
@@ -266,8 +266,8 @@ pub fn draw_future_pill_base(ctx: &Context, p: &Painter, draw_rect: Rect, base_r
 }
 
 /// Polished future pill with squish physics.  Returns the Y push-down (0–1.5).
-pub fn draw_future_pill(ui: &mut Ui, response: &Response, rect: Rect) -> f32 {
-    let pressed = response.is_pointer_button_down_on();
+pub fn draw_future_pill(ui: &mut Ui, response: &Response, rect: Rect, is_pressed: bool) -> f32 {
+    let pressed = response.is_pointer_button_down_on() || is_pressed;
     let press_t = ui.ctx().animate_value_with_time(
         response.id.with("ch_press"),
         if pressed { 1.0 } else { 0.0 },
@@ -444,7 +444,7 @@ pub fn button_w(ui: &mut Ui, text: &str, min_w: f32) -> Response {
     if response.clicked() { response.mark_changed(); }
 
     if ui.is_rect_visible(rect) {
-        let shift_y = draw_future_pill(ui, &response, rect);
+        let shift_y = draw_future_pill(ui, &response, rect, false);
 
         let text_pos = ui.layout().align_size_within_rect(galley.size(), rect.shrink(2.0)).min
             + vec2(0.0, shift_y);
@@ -471,7 +471,7 @@ pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
     let size = galley.size() + padding * 2.0;
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     if ui.is_rect_visible(rect) {
-        let shift_y = draw_future_pill(ui, &response, rect);
+        let shift_y = draw_future_pill(ui, &response, rect, false);
         let text_pos = ui.layout().align_size_within_rect(galley.size(), rect.shrink(2.0)).min
             + vec2(0.0, shift_y);
         let hover_t = ui.ctx().animate_value_with_time(
@@ -491,14 +491,14 @@ pub fn key_cap(ui: &mut Ui, text: &str) -> Response {
     response.hand()
 }
 
-pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> Response {
+pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32, font_size: f32, is_pressed: bool) -> Response {
     let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::BLACK);
     let gw = measure.size().x;
     let gh = measure.size().y;
     let side = min_side.max(gw + 6.0);
     let (rect, response) = ui.allocate_exact_size(vec2(side, side), Sense::click());
     if ui.is_rect_visible(rect) {
-        let shift_y = draw_future_pill(ui, &response, rect);
+        let shift_y = draw_future_pill(ui, &response, rect, is_pressed);
         let c = rect.center();
         let pos = pos2(c.x - gw / 2.0, c.y - gh / 2.0 - 2.5 + shift_y);
         let hover_t = ui.ctx().animate_value_with_time(
@@ -531,14 +531,14 @@ pub fn key_cap_small(ui: &mut Ui, text: &str, min_side: f32, font_size: f32) -> 
     response.hand()
 }
 
-pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32, font_size: f32) -> Response {
+pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32, font_size: f32, is_pressed: bool) -> Response {
     let measure = ui.painter().layout_no_wrap(text.to_string(), FontId::monospace(font_size), Color32::BLACK);
     let gw = measure.size().x;
     let gh = measure.size().y;
     let side = min_side.max(gw + 6.0);
     let (rect, response) = ui.allocate_exact_size(vec2(side, side), Sense::click());
     if ui.is_rect_visible(rect) {
-        let shift_y = draw_future_pill(ui, &response, rect);
+        let shift_y = draw_future_pill(ui, &response, rect, is_pressed);
         let s = angle.signum();
         let c = rect.center();
         let pos = pos2(c.x + s * (gh / 2.0 + 2.0), c.y - s * gw / 2.0 + shift_y);
@@ -580,7 +580,61 @@ pub fn key_cap_small_rotated(ui: &mut Ui, text: &str, angle: f32, min_side: f32,
 pub struct Future;
 
 impl crate::ui::theme::ThemeProvider for Future {
-    fn apply_theme(&self, ctx: &Context) { apply_theme(ctx); }
+    fn palette(&self) -> crate::ui::theme::ThemePalette {
+        crate::ui::theme::ThemePalette {
+            is_terminal_style: false,
+            panel_margin: 0.0,
+            panel_text_color: egui::Color32::from_rgb(192, 202, 222),
+            hash_stat_color: crate::ui::future::TEXT,
+            hash_selection_color: crate::ui::future::FUTURE_GLOW,
+            title_bar_text_color: egui::Color32::WHITE,
+            title_bar_button_color: crate::ui::future::FUTURE_BODY,
+            tracker_color: crate::ui::future::TEXT,
+            chart_axis_color: egui::Color32::from_white_alpha(30),
+            remove_tracker_border_on_hover: false,
+        }
+    }
+
+    fn apply_theme(&self, ctx: &Context) {
+        ctx.set_fonts(egui::FontDefinitions::default());
+        apply_theme(ctx);
+    }
+    
+
+    fn draw_background_pattern(&self, painter: &Painter, rect: Rect) {
+        draw_scan_lines(painter, rect);
+    }
+    
+    fn edit_popup_visuals(&self, visuals: &mut egui::Visuals) {
+        visuals.window_fill = BG;
+        visuals.panel_fill = PANEL;
+        visuals.window_stroke = Stroke::new(1.0, INSET_BORDER);
+        visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, TEXT);
+
+        visuals.widgets.hovered.bg_fill = Color32::from_rgb(130, 148, 192); // FUTURE_GLOW
+        visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(130, 148, 192);
+        visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, Color32::BLACK);
+        visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, TEXT);
+    }
+
+    fn paint_hash_bg(&self, p: &Painter, rect: Rect) {
+        p.rect_filled(rect, egui::CornerRadius::same(3), INSET_FILL);
+        crate::ui::dew::draw_inset(p, rect);
+    }
+
+    fn paint_title_bar_text_bg(&self, ui: &mut Ui, rect: Rect) {
+        ui.painter().rect_filled(
+            rect.expand2(egui::vec2(4.0, -1.0)),
+            2.0,
+            Color32::BLACK,
+        );
+    }
+
+    
+    fn paint_title_bar_button(&self, ui: &mut Ui, resp: &Response, r: f32, base_color: Color32, symbol: &str, hover_t: f32) {
+        draw_orb_btn(ui, resp, r, base_color, symbol, Some(hover_t));
+    }
+
     fn draw_sunken(&self, painter: &Painter, rect: Rect) { draw_inset(painter, rect); }
 
     fn draw_space_strategy_bg(&self, ui: &mut Ui, rect: Rect) {
@@ -600,9 +654,8 @@ impl crate::ui::theme::ThemeProvider for Future {
     }
 
     fn section_toggle_btn(&self, ui: &mut Ui) -> Response { section_toggle_btn(ui) }
-    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32) -> Response { key_cap_small(ui, text, side, font_size) }
-    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32) -> Response { key_cap_small_rotated(ui, text, angle, side, font_size) }
-    fn collapsible_header(&self, ui: &mut Ui, text: &str, is_open: bool) -> bool { crate::ui::widgets::collapsible_header(self, ui, text, is_open) }
+    fn key_cap_small(&self, ui: &mut Ui, text: &str, side: f32, font_size: f32, is_pressed: bool) -> Response { key_cap_small(ui, text, side, font_size, is_pressed) }
+    fn key_cap_small_rotated(&self, ui: &mut Ui, text: &str, angle: f32, side: f32, font_size: f32, is_pressed: bool) -> Response { key_cap_small_rotated(ui, text, angle, side, font_size, is_pressed) }
     fn paint_slider_track(&self, ui: &mut Ui, track_rect: Rect, center_x: f32) {
         let p = ui.painter();
         p.rect_filled(track_rect, 0.0, Color32::from_rgb(4, 5, 8));
@@ -780,7 +833,10 @@ impl crate::ui::theme::ThemeProvider for Future {
             .frame(egui::Frame::NONE)
             .text_color(TEXT);
 
-        child.add(text_edit)
+        let mut te_resp = child.add(text_edit);
+        crate::ui::widgets::maintain_text_selection_cache(ui.ctx(), &te_resp, text, rect);
+        if crate::ui::widgets::text_field_context_menu(self, &te_resp, te_resp.id, text) { te_resp.mark_changed(); }
+        te_resp
     }
 
     fn button_text_color(&self) -> egui::Color32 {
@@ -817,31 +873,9 @@ impl crate::ui::theme::ThemeProvider for Future {
         push_y
     }
 
-    fn key_cap_text_color(&self) -> egui::Color32 {
-        egui::Color32::BLACK
-    }
 
-    fn paint_key_cap(&self, p: &egui::Painter, rect: egui::Rect, is_down: bool, is_hovered: bool) {
-        let r = rect.height() / 2.0;
-        if is_down {
-            p.rect_filled(rect, r, Color32::from_rgb(180, 180, 180));
-        } else if !is_hovered {
-            p.rect_stroke(rect, r, Stroke::new(1.0,
-                Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
-        } else {
-            p.rect_stroke(rect, r, Stroke::new(1.0,
-                Color32::from_rgba_premultiplied(FUTURE_BORDER.r(), FUTURE_BORDER.g(), FUTURE_BORDER.b(), 210)), egui::StrokeKind::Outside);
-            draw_holographic_hover(p.ctx(), p, rect, r, 1.0);
-        }
-    }
 
-    fn chart_bg(&self) -> egui::Color32 {
-        egui::Color32::from_rgb(8, 8, 12)
-    }
 
-    fn tracker_color(&self) -> egui::Color32 {
-        TEXT
-    }
 }
 
 // ── Digital Static Grid (Volume Slider) ───────────────────────────────────────
@@ -897,7 +931,7 @@ pub fn draw_digital_static_grid(ctx: &egui::Context, p: &egui::Painter, draw_rec
                 if seed % 10 < 5 {
                     let tc = ((x - draw_rect.min.x) / draw_rect.width().max(1.0)).clamp(0.0, 1.0);
                     let col = match (seed / 10) % 5 {
-                        0 | 1 | 2 => irid_color(tc),
+                        0..=2 => irid_color(tc),
                         3 => egui::Color32::WHITE,
                         _ => egui::Color32::from_gray(140),
                     };

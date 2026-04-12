@@ -2,15 +2,15 @@ const PI:  f32 = 3.14159265;
 const PHI: f32 = 1.61803399;
 const TAU: f32 = 6.28318531;
 
-struct SimUniform { 
-    tick: f32, 
-    noise: f32, 
-    t_epoch: f32, 
-    pan_x: f32, 
-    pan_y: f32, 
-    _pad1: f32, 
-    _pad2: f32, 
-    _pad3: f32 
+struct SimUniform {
+    tick: f32,
+    noise: f32,
+    t_epoch: f32,
+    pan_x: f32,
+    pan_y: f32,
+    zoom: f32,
+    _pad2: f32,
+    _pad3: f32
 }
 @group(0) @binding(0) var<uniform> sim: SimUniform;
 
@@ -21,28 +21,23 @@ struct WaveColors { c: array<vec4<f32>, 3> }
 @group(0) @binding(2) var<uniform> wave_colors: WaveColors;
 
 // ── Wave Cache (binding 3) ────────────────────────────────────────────────────
-// Pre-baked per-frame results of fhash / memory / gen_acc / wave_energy /
-// wave_center / wave_velocity / fork_center.
-// Computed once on the CPU in engine/wave_cache.rs, uploaded before the field
-// pass.  This reduces per-pixel trig from ~1 200 calls to ~30.
-// Indices 0–2 = main waves, 3–5 = their forks.
 struct WaveData {
-    amp:       f32,   // effective amplitude (kinetic pulse applied; forks ×FORK_WEIGHT)
-    freq:      f32,   // final frequency
-    dir_x:     f32,   // cos(angle_t)
-    dir_y:     f32,   // sin(angle_t)
-    shape:     f32,   // sine / abs-sine blend weight
-    warp:      f32,   // spatial warp multiplier
-    cx:        f32,   // Gaussian envelope centre x
-    cy:        f32,   // Gaussian envelope centre y
-    cos_v:     f32,   // cos(velocity angle) for ellipsoid rotation
-    sin_v:     f32,   // sin(velocity angle)
-    stretch:   f32,   // 1 + speed×0.5
-    radius:    f32,   // Gaussian envelope radius
-    phase_off: f32,   // precomputed −freq×t + origin_phase
-    origin_ph: f32,   // origin wave phase (for fork spatial warp)
-    alive:     f32,   // 1.0 = alive, 0.0 = inactive (fork not yet split)
-    base_amp:  f32,   // env.waves[origin].amp for per-branch colour ratio
+    amp:       f32,
+    freq:      f32,
+    dir_x:     f32,
+    dir_y:     f32,
+    shape:     f32,
+    warp:      f32,
+    cx:        f32,
+    cy:        f32,
+    cos_v:     f32,
+    sin_v:     f32,
+    stretch:   f32,
+    radius:    f32,
+    phase_off: f32,
+    origin_ph: f32,
+    alive:     f32,
+    base_amp:  f32,
 }
 struct WaveCache { waves: array<WaveData, 6> }
 @group(0) @binding(3) var<uniform> wc: WaveCache;
@@ -69,26 +64,22 @@ fn vs_main(@builtin(vertex_index) vi: u32) -> VOut {
 }
 
 // ── Wave sample ───────────────────────────────────────────────────────────────
-// sin_term = amp × sin(phase_arg)         — field contribution
-// cos_freq = amp × freq × cos(phase_arg)  — derivative kernel:
-//   dfield/dT  = −∑(cos_freq)
-//   dfield/dx  =  ∑(cos_freq × dir.x)
-//   dfield/dy  =  ∑(cos_freq × dir.y)
 struct WaveSample { sin_term: f32, cos_freq: f32, dir: vec2<f32>, freq: f32 }
 
-// Per-pixel work for a main wave: ~4 trig + 1 exp (vs ~200 trig before).
+// Per-pixel work for a main wave: ~4 trig + 1 exp.
 fn sample_wave(i: u32, pos: vec2<f32>, t: f32) -> WaveSample {
     let w   = wc.waves[i];
     var out: WaveSample;
-    out.sin_term = 0.0; out.cos_freq = 0.0;
-    out.dir = vec2(w.dir_x, w.dir_y); out.freq = w.freq;
+    out.sin_term = 0.0; out.cos_freq = 0.0; out.freq = w.freq;
+    // dir built once — used for both the early-return path and the main path.
+    let dir = vec2(w.dir_x, w.dir_y);
+    out.dir = dir;
     if w.alive < 0.5 { return out; }
 
-    let dir       = vec2(w.dir_x, w.dir_y);
     let phase_arg = w.freq * dot(dir, pos) + w.phase_off;
     let s         = sin(phase_arg);
     let osc       = mix(s, abs(s) * 2.0 - 1.0, w.shape);
-    // Shimmer: surface texture — 2 trig per wave, genuinely pos-dependent.
+    // Shimmer: surface texture — genuinely pos-dependent.
     let shimmer   = cos(pos.x * 2.0 + t) * sin(pos.y * 1.5 - t * 0.5);
     let wave_val  = 1.0 + 0.3 * osc + w.warp * 0.2 * shimmer;
 
@@ -101,21 +92,20 @@ fn sample_wave(i: u32, pos: vec2<f32>, t: f32) -> WaveSample {
 
     out.sin_term = w.amp * wave_val * env;
     out.cos_freq = w.amp * w.freq * cos(phase_arg) * env;
-    out.dir      = dir;
-    out.freq     = w.freq;
     return out;
 }
 
-// Per-pixel work for a fork: ~6 trig + 1 exp (vs ~200 trig before).
+// Per-pixel work for a fork: ~6 trig + 1 exp.
 fn sample_fork(i: u32, pos: vec2<f32>, t: f32) -> WaveSample {
     let w   = wc.waves[3u + i];
     var out: WaveSample;
-    out.sin_term = 0.0; out.cos_freq = 0.0;
-    out.dir = vec2(w.dir_x, w.dir_y); out.freq = w.freq;
+    out.sin_term = 0.0; out.cos_freq = 0.0; out.freq = w.freq;
+    // dir built once — used for both the early-return path and the main path.
+    let dir = vec2(w.dir_x, w.dir_y);
+    out.dir = dir;
     if w.alive < 0.5 { return out; }
 
-    let dir = vec2(w.dir_x, w.dir_y);
-    // Spatial warp: 2 trig per fork, genuinely pos-dependent.
+    // Spatial warp: genuinely pos-dependent.
     let warped_pos = pos + vec2(
         sin(pos.y * 0.15 + w.origin_ph) * 2.5,
         cos(pos.x * 0.15 - w.origin_ph) * 2.5,
@@ -123,7 +113,7 @@ fn sample_fork(i: u32, pos: vec2<f32>, t: f32) -> WaveSample {
     let phase_arg = w.freq * dot(dir, warped_pos) + w.phase_off;
     let s         = sin(phase_arg);
     let osc       = mix(s, abs(s) * 2.0 - 1.0, w.shape);
-    // Fork texture: 2 trig per fork, genuinely pos-dependent.
+    // Fork texture: genuinely pos-dependent.
     let texture   = cos(pos.x * 1.5 + pos.y * 0.5) * sin(length(pos) * 2.0 + t);
     let wave_val  = 1.0 + 0.3 * osc + w.warp * 0.2 * texture;
 
@@ -137,8 +127,6 @@ fn sample_fork(i: u32, pos: vec2<f32>, t: f32) -> WaveSample {
     // FORK_WEIGHT (0.6) already baked into w.amp by wave_cache.rs.
     out.sin_term = w.amp * wave_val * env;
     out.cos_freq = w.amp * w.freq * cos(phase_arg) * env;
-    out.dir      = dir;
-    out.freq     = w.freq;
     return out;
 }
 
@@ -146,58 +134,63 @@ fn sample_fork(i: u32, pos: vec2<f32>, t: f32) -> WaveSample {
 fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let t = sim.t_epoch * (TAU / 0.1) + sim.tick;
 
-    // Causal horizon: wave phase velocity = 1, so the field at position x
-    // is zero until t = |x|. The universe grows because physics says so.
-    let camera_span = 12.5;
-    let pos         = (in.uv * 2.0 - vec2(1.0)) * camera_span + vec2(sim.pan_x, sim.pan_y);
+    let camera_span = 12.5 / sim.zoom; // >1 means zoomed in, <1 means zoomed out
+    // Invert the Y axis to map screen space (Y down) to pure math Cartesian space (Y up).
+    let pos         = vec2(in.uv.x * 2.0 - 1.0, 1.0 - in.uv.y * 2.0) * camera_span + vec2(sim.pan_x, sim.pan_y);
 
     let wave0 = sample_wave(0u, pos, t);
     let wave1 = sample_wave(1u, pos, t);
     let wave2 = sample_wave(2u, pos, t);
 
-    // forks — each branch forks once at a hash-determined generation
     let f0 = sample_fork(0u, pos, t);
     let f1 = sample_fork(1u, pos, t);
     let f2 = sample_fork(2u, pos, t);
 
-    let amp_sum = wc.waves[0].base_amp + wc.waves[1].base_amp + wc.waves[2].base_amp;
+    // One reciprocal replaces four divisions — amp_sum is uniform data,
+    // identical for every pixel, so the division cost is paid once.
+    let inv_amp = 1.0 / (wc.waves[0].base_amp + wc.waves[1].base_amp + wc.waves[2].base_amp);
 
-    // field value — branches + forks
     let field = (wave0.sin_term + wave1.sin_term + wave2.sin_term
-               + f0.sin_term + f1.sin_term + f2.sin_term) / amp_sum;
+               + f0.sin_term + f1.sin_term + f2.sin_term) * inv_amp;
 
-    // dfield/dT — positive = rising toward a crest, negative = falling away
+    // dfield/dT — positive = rising toward a crest, negative = falling away.
     let dfield_dt = -(wave0.cos_freq + wave1.cos_freq + wave2.cos_freq
-                    + f0.cos_freq + f1.cos_freq + f2.cos_freq) / amp_sum;
+                    + f0.cos_freq + f1.cos_freq + f2.cos_freq) * inv_amp;
 
-    // gradient field — points toward nearest crest in space
+    // gradient field — points toward nearest crest in space.
     let gradient = vec2(
         (wave0.cos_freq * wave0.dir.x + wave1.cos_freq * wave1.dir.x + wave2.cos_freq * wave2.dir.x
-       + f0.cos_freq * f0.dir.x + f1.cos_freq * f1.dir.x + f2.cos_freq * f2.dir.x) / amp_sum,
+       + f0.cos_freq * f0.dir.x + f1.cos_freq * f1.dir.x + f2.cos_freq * f2.dir.x) * inv_amp,
         (wave0.cos_freq * wave0.dir.y + wave1.cos_freq * wave1.dir.y + wave2.cos_freq * wave2.dir.y
-       + f0.cos_freq * f0.dir.y + f1.cos_freq * f1.dir.y + f2.cos_freq * f2.dir.y) / amp_sum,
+       + f0.cos_freq * f0.dir.y + f1.cos_freq * f1.dir.y + f2.cos_freq * f2.dir.y) * inv_amp,
     );
 
-    let signal = pow(max(field, 0.0), 3.0);
+    // pow(x, 3) replaced with x*x*x — multiplication is much cheaper than pow.
+    let s      = max(field, 0.0);
+    let signal = s * s * s;
 
-    // branch color — forks share their origin's color (same branch, diverged parameters)
-    let r0   = max(wave0.sin_term + f0.sin_term, 0.0) / (wc.waves[0].base_amp + 1e-5);
-    let r1   = max(wave1.sin_term + f1.sin_term, 0.0) / (wc.waves[1].base_amp + 1e-5);
-    let r2   = max(wave2.sin_term + f2.sin_term, 0.0) / (wc.waves[2].base_amp + 1e-5);
-    let rsum = r0 + r1 + r2 + 1e-5;
-    let species_col = (r0 / rsum) * wave_colors.c[0].xyz
-                    + (r1 / rsum) * wave_colors.c[1].xyz
-                    + (r2 / rsum) * wave_colors.c[2].xyz;
+    // Branch color — forks share their origin's color.
+    // Three reciprocals of uniform base_amp values computed once each,
+    // then one reciprocal of rsum replaces two divisions.
+    let inv_ba0 = 1.0 / (wc.waves[0].base_amp + 1e-5);
+    let inv_ba1 = 1.0 / (wc.waves[1].base_amp + 1e-5);
+    let inv_ba2 = 1.0 / (wc.waves[2].base_amp + 1e-5);
+    let r0      = max(wave0.sin_term + f0.sin_term, 0.0) * inv_ba0;
+    let r1      = max(wave1.sin_term + f1.sin_term, 0.0) * inv_ba1;
+    let r2      = max(wave2.sin_term + f2.sin_term, 0.0) * inv_ba2;
+    let inv_rsum    = 1.0 / (r0 + r1 + r2 + 1e-5);
+    let species_col = (r0 * wave_colors.c[0].xyz
+                     + r1 * wave_colors.c[1].xyz
+                     + r2 * wave_colors.c[2].xyz) * inv_rsum;
 
     // dfield/dT tints the color — rising regions cool, falling regions warm.
-    // the leading edge of a moving creature is a different temperature than its trailing edge.
     let time_tint  = clamp(dfield_dt * 0.4, -1.0, 1.0);
     let tinted_col = species_col
         + select(vec3( 0.15, -0.05, -0.15),   // warm (falling)
                  vec3(-0.10,  0.05,  0.20),    // cool (rising)
                  time_tint > 0.0) * abs(time_tint);
 
-    // gradient magnitude lights the edges of creatures
+    // gradient magnitude lights the edges of creatures.
     let edge = clamp(length(gradient) * 0.15, 0.0, 0.4);
     let lit  = clamp(tinted_col + vec3(edge), vec3(0.0), vec3(1.0));
 

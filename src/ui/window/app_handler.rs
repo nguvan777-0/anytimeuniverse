@@ -9,7 +9,10 @@ impl ApplicationHandler for App {
                 .create_window(
                     winit::window::WindowAttributes::default()
                         .with_title("anytimeuniverse")
-                        .with_inner_size(winit::dpi::LogicalSize::new(DISPLAY_H + 260 + 260, DISPLAY_H))
+                        .with_inner_size(winit::dpi::LogicalSize::new(
+                            DISPLAY_H + 260 + 260,
+                            DISPLAY_H,
+                        ))
                         .with_min_inner_size(winit::dpi::LogicalSize::new(320u32, 240u32)),
                 )
                 .expect("failed to create window"),
@@ -60,15 +63,25 @@ impl ApplicationHandler for App {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue.write_buffer(&env_buf, 0, bytemuck::cast_slice(&env_data));
+        self.queue
+            .write_buffer(&env_buf, 0, bytemuck::cast_slice(&env_data));
 
         // WaveColors uniform: 3 × vec4<f32> = 48 bytes
         let wc_data: [f32; 12] = {
             let wc = &self.wave_colors;
             [
-                wc[0].r() as f32 / 255.0, wc[0].g() as f32 / 255.0, wc[0].b() as f32 / 255.0, 0.0,
-                wc[1].r() as f32 / 255.0, wc[1].g() as f32 / 255.0, wc[1].b() as f32 / 255.0, 0.0,
-                wc[2].r() as f32 / 255.0, wc[2].g() as f32 / 255.0, wc[2].b() as f32 / 255.0, 0.0,
+                wc[0].r() as f32 / 255.0,
+                wc[0].g() as f32 / 255.0,
+                wc[0].b() as f32 / 255.0,
+                0.0,
+                wc[1].r() as f32 / 255.0,
+                wc[1].g() as f32 / 255.0,
+                wc[1].b() as f32 / 255.0,
+                0.0,
+                wc[2].r() as f32 / 255.0,
+                wc[2].g() as f32 / 255.0,
+                wc[2].b() as f32 / 255.0,
+                0.0,
             ]
         };
         let color_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -77,7 +90,8 @@ impl ApplicationHandler for App {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.queue.write_buffer(&color_buf, 0, bytemuck::cast_slice(&wc_data));
+        self.queue
+            .write_buffer(&color_buf, 0, bytemuck::cast_slice(&wc_data));
 
         let bgl = self
             .device
@@ -133,9 +147,9 @@ impl ApplicationHandler for App {
             });
 
         let wave_cache_buf = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label:              Some("wave-cache"),
-            size:               std::mem::size_of::<[crate::engine::wave_cache::WaveData; 6]>() as u64,
-            usage:              wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            label: Some("wave-cache"),
+            size: std::mem::size_of::<[crate::engine::wave_cache::WaveData; 6]>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
 
@@ -143,10 +157,22 @@ impl ApplicationHandler for App {
             label: Some("render-bg"),
             layout: &bgl,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: tick_buf.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: env_buf.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: color_buf.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: wave_cache_buf.as_entire_binding() },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: tick_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: env_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: color_buf.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wave_cache_buf.as_entire_binding(),
+                },
             ],
         });
 
@@ -200,88 +226,122 @@ impl ApplicationHandler for App {
             None,
             None,
         );
-        let egui_renderer = egui_wgpu::Renderer::new(&self.device, format, egui_wgpu::RendererOptions {
-            msaa_samples: 1,
-            depth_stencil_format: None,
-            dithering: false,
-            ..Default::default()
-        });
+        let egui_renderer = egui_wgpu::Renderer::new(
+            &self.device,
+            format,
+            egui_wgpu::RendererOptions {
+                msaa_samples: 1,
+                depth_stencil_format: None,
+                dithering: false,
+                ..Default::default()
+            },
+        );
 
         // ── Offscreen field texture ───────────────────────────────────────────
         // The expensive field shader renders into this once per T-change.
         // A cheap blit copies it to the swap-chain surface every frame.
         let field_texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label:                 Some("field-texture"),
-            size:                  wgpu::Extent3d { width: inner.width.max(1), height: inner.height.max(1), depth_or_array_layers: 1 },
-            mip_level_count:       1,
-            sample_count:          1,
-            dimension:             wgpu::TextureDimension::D2,
+            label: Some("field-texture"),
+            size: wgpu::Extent3d {
+                width: inner.width.max(1),
+                height: inner.height.max(1),
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
             format,
-            usage:                 wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats:          &[],
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
         });
         let field_view = field_texture.create_view(&Default::default());
 
         // ── Blit pipeline ─────────────────────────────────────────────────────
-        let blit_shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label:  Some("blit"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../blit.wgsl").into()),
-        });
-        let blit_bgl = self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label:   None,
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding:    0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty:         wgpu::BindingType::Texture {
-                        sample_type:    wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled:   false,
+        let blit_shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("blit"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("../blit.wgsl").into()),
+            });
+        let blit_bgl = self
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: None,
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding:    1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty:         wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count:      None,
-                },
-            ],
-        });
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
         let blit_sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
         let blit_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label:   Some("blit-bg"),
-            layout:  &blit_bgl,
+            label: Some("blit-bg"),
+            layout: &blit_bgl,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&field_view) },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&blit_sampler) },
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&field_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&blit_sampler),
+                },
             ],
         });
-        let blit_layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label:                Some("blit-layout"),
-            bind_group_layouts:   &[Some(&blit_bgl)],
-            immediate_size:       0,
-        });
-        let blit_pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label:    Some("blit"),
-            layout:   Some(&blit_layout),
-            vertex:   wgpu::VertexState { module: &blit_shader, entry_point: Some("vs_main"), buffers: &[], compilation_options: Default::default() },
-            fragment: Some(wgpu::FragmentState {
-                module:               &blit_shader,
-                entry_point:          Some("fs_main"),
-                targets:              &[Some(wgpu::ColorTargetState { format, blend: Some(wgpu::BlendState::REPLACE), write_mask: wgpu::ColorWrites::ALL })],
-                compilation_options:  Default::default(),
-            }),
-            primitive:       wgpu::PrimitiveState { topology: wgpu::PrimitiveTopology::TriangleStrip, ..Default::default() },
-            depth_stencil:   None,
-            multisample:     wgpu::MultisampleState::default(),
-            multiview_mask:  None,
-            cache:           None,
-        });
+        let blit_layout = self
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("blit-layout"),
+                bind_group_layouts: &[Some(&blit_bgl)],
+                immediate_size: 0,
+            });
+        let blit_pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("blit"),
+                layout: Some(&blit_layout),
+                vertex: wgpu::VertexState {
+                    module: &blit_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &blit_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                multiview_mask: None,
+                cache: None,
+            });
 
         self.state = Some(RenderState {
             window,
@@ -314,18 +374,20 @@ impl ApplicationHandler for App {
         while self.sim_handle.stats_buffer.update() {
             let stats = self.sim_handle.stats_buffer.read().clone();
             if let Some(prev) = &self.last_stats
-                && stats.tick < prev.tick {
-                    self.branch_density_latest = None;
-                    self.branch_density_dirty = false;
-                    self.last_projection_tick = 0;
-                    self.last_bounds_instant = None;
-                    self.last_sent_bounds = [-15.0, 15.0, -15.0, 15.0];
-                    self.circle_axes = ([0.0; 14], [0.0; 14], [0.0; 14]);
-                    self.history.clear();
-                }
+                && stats.tick < prev.tick
+            {
+                self.branch_density_latest = None;
+                self.branch_density_dirty = false;
+                self.last_projection_tick = 0;
+                self.last_bounds_instant = None;
+                self.last_sent_bounds = [-15.0, 15.0, -15.0, 15.0];
+                self.circle_axes = ([0.0; 14], [0.0; 14], [0.0; 14]);
+                self.history.clear();
+            }
             // color_counts is left empty by the sim thread — skip empty pushes.
             if !stats.color_counts.is_empty() {
-                self.history.push_back((stats.color_counts.clone(), self.wave_colors.clone()));
+                self.history
+                    .push_back((stats.color_counts.clone(), self.wave_colors.clone()));
                 if self.history.len() > 240 {
                     self.history.pop_front();
                 }
@@ -347,24 +409,55 @@ impl ApplicationHandler for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        // Track modifier keys so app shortcuts can be guarded below.
+        if let WindowEvent::ModifiersChanged(mods) = &event {
+            self.modifiers = mods.state();
+        }
+
         // Handle pan keys before egui gets a chance to consume them.
-        if let WindowEvent::KeyboardInput { event: ref key_event, .. } = event
+        // Only fire when no modifier keys are held so Ctrl+A/W/S/D (select-all etc.) pass through.
+        if let WindowEvent::KeyboardInput {
+            event: ref key_event,
+            ..
+        } = event
             && key_event.state == winit::event::ElementState::Pressed
-            && let winit::keyboard::PhysicalKey::Code(code) = key_event.physical_key {
-                let panned = match code {
-                    winit::keyboard::KeyCode::KeyW => { self.pan_y -= 0.25; true }
-                    winit::keyboard::KeyCode::KeyA => { self.pan_x -= 0.25; true }
-                    winit::keyboard::KeyCode::KeyS => { self.pan_y += 0.25; true }
-                    winit::keyboard::KeyCode::KeyD => { self.pan_x += 0.25; true }
-                    _ => false,
-                };
-                if panned {
-                    self.field_force_redraw = true;
-                    if let Some(state) = &self.state {
-                        state.window.request_redraw();
-                    }
+            && let winit::keyboard::PhysicalKey::Code(code) = key_event.physical_key
+            && self.modifiers == winit::keyboard::ModifiersState::empty()
+        {
+            let panned = match code {
+                winit::keyboard::KeyCode::KeyW => {
+                    self.pan_y += 0.25 / self.zoom;
+                    true
+                }
+                winit::keyboard::KeyCode::KeyA => {
+                    self.pan_x -= 0.25 / self.zoom;
+                    true
+                }
+                winit::keyboard::KeyCode::KeyS => {
+                    self.pan_y -= 0.25 / self.zoom;
+                    true
+                }
+                winit::keyboard::KeyCode::KeyD => {
+                    self.pan_x += 0.25 / self.zoom;
+                    true
+                }
+                winit::keyboard::KeyCode::KeyQ | winit::keyboard::KeyCode::Minus => {
+                    self.zoom /= 1.25;
+                    true
+                }
+                winit::keyboard::KeyCode::KeyE | winit::keyboard::KeyCode::Equal => {
+                    self.zoom *= 1.25;
+                    true
+                }
+                _ => false,
+            };
+            if panned {
+                self.field_force_redraw = true;
+                if let Some(state) = &self.state {
+                    state.window.request_redraw();
                 }
             }
+        }
 
         if let Some(state) = &mut self.state {
             let res = state.egui_state.on_window_event(&state.window, &event);
@@ -379,219 +472,326 @@ impl ApplicationHandler for App {
         match event {
             WindowEvent::Resized(physical_size) => {
                 if let Some(state) = &mut self.state
-                    && physical_size.width > 0 && physical_size.height > 0 {
-                        state.config.width = physical_size.width;
-                        state.config.height = physical_size.height;
-                        state.surface.configure(&self.device, &state.config);
-                        // Recreate field texture at new dimensions
-                        let new_tex = self.device.create_texture(&wgpu::TextureDescriptor {
-                            label:              Some("field-texture"),
-                            size:               wgpu::Extent3d { width: physical_size.width, height: physical_size.height, depth_or_array_layers: 1 },
-                            mip_level_count:    1,
-                            sample_count:       1,
-                            dimension:          wgpu::TextureDimension::D2,
-                            format:             state.config.format,
-                            usage:              wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-                            view_formats:       &[],
-                        });
-                        let new_view = new_tex.create_view(&Default::default());
-                        let new_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-                            label:   Some("blit-bg"),
-                            layout:  &state.blit_bgl,
-                            entries: &[
-                                wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&new_view) },
-                                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(&state.blit_sampler) },
-                            ],
-                        });
-                        state.field_texture = new_tex;
-                        state.field_view    = new_view;
-                        state.blit_bg       = new_bg;
-                        self.field_force_redraw = true;
-                        state.window.request_redraw();
-                    }
+                    && physical_size.width > 0
+                    && physical_size.height > 0
+                {
+                    state.config.width = physical_size.width;
+                    state.config.height = physical_size.height;
+                    state.surface.configure(&self.device, &state.config);
+                    // Recreate field texture at new dimensions
+                    let new_tex = self.device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("field-texture"),
+                        size: wgpu::Extent3d {
+                            width: physical_size.width,
+                            height: physical_size.height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: state.config.format,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                            | wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    });
+                    let new_view = new_tex.create_view(&Default::default());
+                    let new_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("blit-bg"),
+                        layout: &state.blit_bgl,
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: wgpu::BindingResource::TextureView(&new_view),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: wgpu::BindingResource::Sampler(&state.blit_sampler),
+                            },
+                        ],
+                    });
+                    state.field_texture = new_tex;
+                    state.field_view = new_view;
+                    state.blit_bg = new_bg;
+                    self.field_force_redraw = true;
+                    state.window.request_redraw();
+                }
             }
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::KeyboardInput { event, .. } => {
                 if event.state == winit::event::ElementState::Pressed
-                    && let winit::keyboard::PhysicalKey::Code(code) = event.physical_key {
-                        match code {
-                            winit::keyboard::KeyCode::KeyF => {
-                                self.pending_fullscreen_toggle = true;
-                            }
-                            winit::keyboard::KeyCode::F12 => {
-                                self.take_screenshot = true;
-                            }
-                            winit::keyboard::KeyCode::KeyW
-                            | winit::keyboard::KeyCode::KeyA
-                            | winit::keyboard::KeyCode::KeyS
-                            | winit::keyboard::KeyCode::KeyD => {
-                                // Handled before egui above so panning always works.
-                            }
-                            winit::keyboard::KeyCode::KeyR => {
-                                // Rewind: zero T, speed=1, resume, same seed
-                                self.t_epoch = 0;
-                                self.t_residual = 0.0;
-                                self.wave_speed = 1.0;
-                                self.custom_speed = 1.0;
-                                self.is_paused = false;
-                                let _ = self.sim_handle.cmd_tx.send(Command::Resume);
-                                self.reset_simulation(false);
-                            }
-                            winit::keyboard::KeyCode::KeyC => {
-                                // New seed: zero T, speed=1, resume, new seed
-                                self.t_epoch = 0;
-                                self.t_residual = 0.0;
-                                self.wave_speed = 1.0;
-                                self.custom_speed = 1.0;
-                                self.is_paused = false;
-                                let _ = self.sim_handle.cmd_tx.send(Command::Resume);
-                                self.reset_simulation(true);
-                            }
-                            winit::keyboard::KeyCode::Space => {
-                                self.is_paused = !self.is_paused;
-                                if self.is_paused {
-                                    let _ = self.sim_handle.cmd_tx.send(Command::Pause);
-                                    println!("[ world ] pause");
-                                } else {
-                                    let _ = self.sim_handle.cmd_tx.send(Command::Resume);
-                                    println!("[ world ] resume");
-                                }
-                                if let Some(state) = &self.state {
-                                    state.window.request_redraw();
-                                }
-                            }
-                            winit::keyboard::KeyCode::Digit0
-                            | winit::keyboard::KeyCode::Digit1
-                            | winit::keyboard::KeyCode::Digit2
-                            | winit::keyboard::KeyCode::Digit3
-                            | winit::keyboard::KeyCode::Digit4
-                            | winit::keyboard::KeyCode::Digit5
-                            | winit::keyboard::KeyCode::Numpad0
-                            | winit::keyboard::KeyCode::Numpad1
-                            | winit::keyboard::KeyCode::Numpad2
-                            | winit::keyboard::KeyCode::Numpad3
-                            | winit::keyboard::KeyCode::Numpad4
-                            | winit::keyboard::KeyCode::Numpad5 => {
-                                let s = match code {
-                                    winit::keyboard::KeyCode::Digit0
-                                    | winit::keyboard::KeyCode::Numpad0 => 0u8,
-                                    winit::keyboard::KeyCode::Digit1
-                                    | winit::keyboard::KeyCode::Numpad1 => 1,
-                                    winit::keyboard::KeyCode::Digit2
-                                    | winit::keyboard::KeyCode::Numpad2 => 2,
-                                    winit::keyboard::KeyCode::Digit3
-                                    | winit::keyboard::KeyCode::Numpad3 => 3,
-                                    winit::keyboard::KeyCode::Digit4
-                                    | winit::keyboard::KeyCode::Numpad4 => 4,
-                                    _ => 5,
-                                };
-                                self.speed = s;
-                                self.wave_speed = match s {
-                                    0 => 0.25,
-                                    1 => 1.0,
-                                    2 => 10.0,
-                                    3 => 100.0,
-                                    4 => 1_000.0,
-                                    _ => 1_000_000.0,
-                                };
-                                self.custom_speed = self.wave_speed; // keep slider in sync
-                                let _ = self
-                                    .sim_handle
-                                    .cmd_tx
-                                    .send(Command::SetSpeed(speed_duration(s)));
-                            }
-                            winit::keyboard::KeyCode::ArrowLeft
-                            | winit::keyboard::KeyCode::ArrowRight => {
-                                const FREQ_MIN: f64 = 0.1;
-                                const PERIOD: f64 = std::f64::consts::TAU / FREQ_MIN;
-                                let current_t = self.t_epoch as f64 * PERIOD + self.t_residual;
-                                let jump = if current_t.abs() < 1.0 {
-                                    1.0
-                                } else {
-                                    10f64.powi(current_t.abs().log10().floor() as i32)
-                                };
-                                if code == winit::keyboard::KeyCode::ArrowLeft {
-                                    self.t_residual -= jump;
-                                } else {
-                                    self.t_residual += jump;
-                                }
-                                // Normalise residual into [0, PERIOD)
-                                if self.t_residual >= PERIOD {
-                                    let extra = (self.t_residual / PERIOD).floor() as i64;
-                                    self.t_epoch = self.t_epoch.saturating_add(extra);
-                                    self.t_residual -= extra as f64 * PERIOD;
-                                } else if self.t_residual < 0.0 {
-                                    let borrow = (-self.t_residual / PERIOD).ceil() as i64;
-                                    self.t_epoch = self.t_epoch.saturating_sub(borrow);
-                                    self.t_residual += borrow as f64 * PERIOD;
-                                }
-
-                                if let Some(state) = &self.state {
-                                    state.window.request_redraw();
-                                }
-                            }
-                            winit::keyboard::KeyCode::ArrowUp
-                            | winit::keyboard::KeyCode::ArrowDown => {
-                                // Step through symmetric speed ladder crossing zero (pause)
-                                const LADDER: &[f64] = &[
-                                    -1e18, -5e17, -2e17, -1e17, -5e16, -2e16, -1e16,
-                                    -5e15, -2e15, -1e15, -5e14, -2e14, -1e14,
-                                    -5e13, -2e13, -1e13, -5e12, -2e12, -1e12,
-                                    -5e11, -2e11, -1e11, -5e10, -2e10, -1e10,
-                                    -5e9, -2e9, -1e9, -5e8, -2e8, -1e8,
-                                    -5e7, -2e7, -1e7, -5e6, -2e6, -1_000_000.0,
-                                    -500_000.0, -200_000.0, -100_000.0,
-                                    -50_000.0, -20_000.0, -10_000.0,
-                                    -5_000.0, -2_000.0, -1_000.0,
-                                    -500.0, -200.0, -100.0,
-                                    -50.0, -20.0, -10.0, -5.0, -2.0, -1.0, -0.5, -0.25,
-                                    0.0, // pause
-                                    0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
-                                    100.0, 200.0, 500.0,
-                                    1_000.0, 2_000.0, 5_000.0,
-                                    10_000.0, 20_000.0, 50_000.0,
-                                    100_000.0, 200_000.0, 500_000.0,
-                                    1_000_000.0, 2e6, 5e6,
-                                    1e7, 2e7, 5e7, 1e8, 2e8, 5e8,
-                                    1e9, 2e9, 5e9, 1e10, 2e10, 5e10,
-                                    1e11, 2e11, 5e11, 1e12, 2e12, 5e12,
-                                    1e13, 2e13, 5e13, 1e14, 2e14, 5e14,
-                                    1e15, 2e15, 5e15, 1e16, 2e16, 5e16,
-                                    1e17, 2e17, 5e17, 1e18,
-                                ];
-                                let cur = self.wave_speed;
-                                // Find closest ladder index
-                                let idx = LADDER
-                                    .iter()
-                                    .enumerate()
-                                    .min_by(|(_, a), (_, b)| {
-                                        ((**a - cur).abs()).partial_cmp(&((**b - cur).abs())).unwrap()
-                                    })
-                                    .map(|(i, _)| i)
-                                    .unwrap_or(7); // default to 1.0
-                                let new_idx = if code == winit::keyboard::KeyCode::ArrowUp {
-                                    (idx + 1).min(LADDER.len() - 1)
-                                } else {
-                                    idx.saturating_sub(1)
-                                };
-                                let new_speed = LADDER[new_idx];
-                                if new_speed == 0.0 {
-                                    self.is_paused = true;
-                                    let _ = self.sim_handle.cmd_tx.send(Command::Pause);
-                                } else {
-                                    self.is_paused = false;
-                                    let _ = self.sim_handle.cmd_tx.send(Command::Resume);
-                                }
-                                self.wave_speed = new_speed;
-                                self.custom_speed = new_speed;
-                                self.speed_text = crate::ui::window::format_speed_text(new_speed);
-                                if let Some(state) = &self.state {
-                                    state.window.request_redraw();
-                                }
-                            }
-                            _ => {}
+                    && let winit::keyboard::PhysicalKey::Code(code) = event.physical_key
+                    && self.modifiers == winit::keyboard::ModifiersState::empty()
+                {
+                    match code {
+                        winit::keyboard::KeyCode::KeyF => {
+                            self.pending_fullscreen_toggle = true;
                         }
+                        winit::keyboard::KeyCode::F12 => {
+                            self.take_screenshot = true;
+                        }
+                        winit::keyboard::KeyCode::KeyW
+                        | winit::keyboard::KeyCode::KeyA
+                        | winit::keyboard::KeyCode::KeyS
+                        | winit::keyboard::KeyCode::KeyD => {
+                            // Handled before egui above so panning always works.
+                        }
+                        winit::keyboard::KeyCode::KeyR => {
+                            // Rewind: zero T, speed=1, resume, same seed
+                            self.t_epoch = 0;
+                            self.t_residual = 0.0;
+                            self.wave_speed = 1.0;
+                            self.custom_speed = 1.0;
+                            self.is_paused = false;
+                            let _ = self.sim_handle.cmd_tx.send(Command::Resume);
+                            self.reset_simulation(false);
+                        }
+                        winit::keyboard::KeyCode::KeyC => {
+                            // New seed: zero T, speed=1, resume, new seed
+                            self.t_epoch = 0;
+                            self.t_residual = 0.0;
+                            self.wave_speed = 1.0;
+                            self.custom_speed = 1.0;
+                            self.is_paused = false;
+                            let _ = self.sim_handle.cmd_tx.send(Command::Resume);
+                            self.reset_simulation(true);
+                        }
+                        winit::keyboard::KeyCode::Space => {
+                            self.is_paused = !self.is_paused;
+                            if self.is_paused {
+                                let _ = self.sim_handle.cmd_tx.send(Command::Pause);
+                                println!("[ world ] pause");
+                            } else {
+                                let _ = self.sim_handle.cmd_tx.send(Command::Resume);
+                                println!("[ world ] resume");
+                            }
+                            if let Some(state) = &self.state {
+                                state.window.request_redraw();
+                            }
+                        }
+                        winit::keyboard::KeyCode::Digit0
+                        | winit::keyboard::KeyCode::Digit1
+                        | winit::keyboard::KeyCode::Digit2
+                        | winit::keyboard::KeyCode::Digit3
+                        | winit::keyboard::KeyCode::Digit4
+                        | winit::keyboard::KeyCode::Digit5
+                        | winit::keyboard::KeyCode::Numpad0
+                        | winit::keyboard::KeyCode::Numpad1
+                        | winit::keyboard::KeyCode::Numpad2
+                        | winit::keyboard::KeyCode::Numpad3
+                        | winit::keyboard::KeyCode::Numpad4
+                        | winit::keyboard::KeyCode::Numpad5 => {
+                            let s = match code {
+                                winit::keyboard::KeyCode::Digit0
+                                | winit::keyboard::KeyCode::Numpad0 => 0u8,
+                                winit::keyboard::KeyCode::Digit1
+                                | winit::keyboard::KeyCode::Numpad1 => 1,
+                                winit::keyboard::KeyCode::Digit2
+                                | winit::keyboard::KeyCode::Numpad2 => 2,
+                                winit::keyboard::KeyCode::Digit3
+                                | winit::keyboard::KeyCode::Numpad3 => 3,
+                                winit::keyboard::KeyCode::Digit4
+                                | winit::keyboard::KeyCode::Numpad4 => 4,
+                                _ => 5,
+                            };
+                            self.speed = s;
+                            self.wave_speed = match s {
+                                0 => 0.25,
+                                1 => 1.0,
+                                2 => 10.0,
+                                3 => 100.0,
+                                4 => 1_000.0,
+                                _ => 1_000_000.0,
+                            };
+                            self.custom_speed = self.wave_speed; // keep slider in sync
+                            let _ = self
+                                .sim_handle
+                                .cmd_tx
+                                .send(Command::SetSpeed(speed_duration(s)));
+                        }
+                        winit::keyboard::KeyCode::ArrowLeft
+                        | winit::keyboard::KeyCode::ArrowRight => {
+                            const FREQ_MIN: f64 = 0.1;
+                            const PERIOD: f64 = std::f64::consts::TAU / FREQ_MIN;
+                            let current_t = self.t_epoch as f64 * PERIOD + self.t_residual;
+                            let jump = if current_t.abs() < 1.0 {
+                                1.0
+                            } else {
+                                10f64.powi(current_t.abs().log10().floor() as i32)
+                            };
+                            if code == winit::keyboard::KeyCode::ArrowLeft {
+                                self.t_residual -= jump;
+                            } else {
+                                self.t_residual += jump;
+                            }
+                            // Normalise residual into [0, PERIOD)
+                            if self.t_residual >= PERIOD {
+                                let extra = (self.t_residual / PERIOD).floor() as i64;
+                                self.t_epoch = self.t_epoch.saturating_add(extra);
+                                self.t_residual -= extra as f64 * PERIOD;
+                            } else if self.t_residual < 0.0 {
+                                let borrow = (-self.t_residual / PERIOD).ceil() as i64;
+                                self.t_epoch = self.t_epoch.saturating_sub(borrow);
+                                self.t_residual += borrow as f64 * PERIOD;
+                            }
+
+                            if let Some(state) = &self.state {
+                                state.window.request_redraw();
+                            }
+                        }
+                        winit::keyboard::KeyCode::ArrowUp | winit::keyboard::KeyCode::ArrowDown => {
+                            // Step through symmetric speed ladder crossing zero (pause)
+                            const LADDER: &[f64] = &[
+                                -1e18,
+                                -5e17,
+                                -2e17,
+                                -1e17,
+                                -5e16,
+                                -2e16,
+                                -1e16,
+                                -5e15,
+                                -2e15,
+                                -1e15,
+                                -5e14,
+                                -2e14,
+                                -1e14,
+                                -5e13,
+                                -2e13,
+                                -1e13,
+                                -5e12,
+                                -2e12,
+                                -1e12,
+                                -5e11,
+                                -2e11,
+                                -1e11,
+                                -5e10,
+                                -2e10,
+                                -1e10,
+                                -5e9,
+                                -2e9,
+                                -1e9,
+                                -5e8,
+                                -2e8,
+                                -1e8,
+                                -5e7,
+                                -2e7,
+                                -1e7,
+                                -5e6,
+                                -2e6,
+                                -1_000_000.0,
+                                -500_000.0,
+                                -200_000.0,
+                                -100_000.0,
+                                -50_000.0,
+                                -20_000.0,
+                                -10_000.0,
+                                -5_000.0,
+                                -2_000.0,
+                                -1_000.0,
+                                -500.0,
+                                -200.0,
+                                -100.0,
+                                -50.0,
+                                -20.0,
+                                -10.0,
+                                -5.0,
+                                -2.0,
+                                -1.0,
+                                -0.5,
+                                -0.25,
+                                0.0, // pause
+                                0.25,
+                                0.5,
+                                1.0,
+                                2.0,
+                                5.0,
+                                10.0,
+                                20.0,
+                                50.0,
+                                100.0,
+                                200.0,
+                                500.0,
+                                1_000.0,
+                                2_000.0,
+                                5_000.0,
+                                10_000.0,
+                                20_000.0,
+                                50_000.0,
+                                100_000.0,
+                                200_000.0,
+                                500_000.0,
+                                1_000_000.0,
+                                2e6,
+                                5e6,
+                                1e7,
+                                2e7,
+                                5e7,
+                                1e8,
+                                2e8,
+                                5e8,
+                                1e9,
+                                2e9,
+                                5e9,
+                                1e10,
+                                2e10,
+                                5e10,
+                                1e11,
+                                2e11,
+                                5e11,
+                                1e12,
+                                2e12,
+                                5e12,
+                                1e13,
+                                2e13,
+                                5e13,
+                                1e14,
+                                2e14,
+                                5e14,
+                                1e15,
+                                2e15,
+                                5e15,
+                                1e16,
+                                2e16,
+                                5e16,
+                                1e17,
+                                2e17,
+                                5e17,
+                                1e18,
+                            ];
+                            let cur = self.wave_speed;
+                            // Find closest ladder index
+                            let idx = LADDER
+                                .iter()
+                                .enumerate()
+                                .min_by(|(_, a), (_, b)| {
+                                    ((**a - cur).abs())
+                                        .partial_cmp(&((**b - cur).abs()))
+                                        .unwrap()
+                                })
+                                .map(|(i, _)| i)
+                                .unwrap_or(7); // default to 1.0
+                            let new_idx = if code == winit::keyboard::KeyCode::ArrowUp {
+                                (idx + 1).min(LADDER.len() - 1)
+                            } else {
+                                idx.saturating_sub(1)
+                            };
+                            let new_speed = LADDER[new_idx];
+                            if new_speed == 0.0 {
+                                self.is_paused = true;
+                                let _ = self.sim_handle.cmd_tx.send(Command::Pause);
+                            } else {
+                                self.is_paused = false;
+                                let _ = self.sim_handle.cmd_tx.send(Command::Resume);
+                            }
+                            self.wave_speed = new_speed;
+                            self.custom_speed = new_speed;
+                            self.speed_text = crate::ui::window::format_speed_text(new_speed);
+                            if let Some(state) = &self.state {
+                                state.window.request_redraw();
+                            }
+                        }
+                        _ => {}
                     }
+                }
             }
             WindowEvent::RedrawRequested => {
                 let state = self.state.as_mut().unwrap();
@@ -633,10 +833,15 @@ impl ApplicationHandler for App {
                     .map(|mhz| (mhz as f64 / 1000.0).round())
                     .unwrap_or(60.0);
 
-                let raw_input = state.egui_state.take_egui_input(&state.window);
+                let mut raw_input = state.egui_state.take_egui_input(&state.window);
+                if let Some(text) = self.pending_paste.take() {
+                    raw_input.events.push(egui::Event::Paste(text));
+                }
+
                 let mut rewind_req = false;
                 let mut reroll_req = false;
                 let mut pause_req = false;
+                let mut reset_view_req = false;
                 let speed_req: Option<u8> = None;
                 let mut arrow_up_req = false;
                 let mut arrow_down_req = false;
@@ -646,48 +851,14 @@ impl ApplicationHandler for App {
                 let mut minimize_req = false;
                 let mut fullscreen_req = false;
 
-
                 let full_output = state.egui_ctx.run_ui(raw_input, |ui| {
-                    let _navy_blue = egui::Color32::from_rgb(0, 0, 128);
-                    if matches!(self.theme, Theme::Rect) {
-                        let term_bg   = egui::Color32::BLACK;
-                        let term_green = egui::Color32::from_rgb(0, 230, 65);
-                        let term_dim  = term_green;
-                        let mut visuals = egui::Visuals::dark();
-                        visuals.panel_fill = term_bg;
-                        visuals.window_fill = term_bg;
-                        visuals.selection.bg_fill = term_dim;
-                        visuals.selection.stroke = egui::Stroke::new(1.0, term_bg);
-                        visuals.widgets.noninteractive.bg_fill = term_bg;
-                        visuals.widgets.noninteractive.weak_bg_fill = term_bg;
-                        visuals.widgets.inactive.bg_fill = term_bg;
-                        visuals.widgets.inactive.weak_bg_fill = term_bg;
-                        visuals.widgets.hovered.bg_fill = term_dim;
-                        visuals.widgets.hovered.weak_bg_fill = term_dim;
-                        visuals.widgets.active.bg_fill = term_dim;
-                        visuals.widgets.active.weak_bg_fill = term_dim;
-                        visuals.override_text_color = Some(term_green);
-                        visuals.widgets.inactive.bg_stroke = egui::Stroke::new(1.0, term_dim);
-                        visuals.widgets.hovered.bg_stroke = egui::Stroke::new(1.0, term_green);
-                        visuals.widgets.active.bg_stroke  = egui::Stroke::new(1.0, term_green);
-                        visuals.widgets.noninteractive.corner_radius = egui::CornerRadius::ZERO;
-                        visuals.widgets.inactive.corner_radius = egui::CornerRadius::ZERO;
-                        visuals.widgets.hovered.corner_radius  = egui::CornerRadius::ZERO;
-                        visuals.widgets.active.corner_radius   = egui::CornerRadius::ZERO;
-                        visuals.window_corner_radius = egui::CornerRadius::ZERO;
-                        visuals.menu_corner_radius   = egui::CornerRadius::ZERO;
-                        ui.ctx().set_visuals(visuals);
-                        let mut fonts = egui::FontDefinitions::default();
-                        if let Some(mono) = fonts.families.get(&egui::FontFamily::Monospace).cloned() {
-                            fonts.families.insert(egui::FontFamily::Proportional, mono);
-                        }
-                        ui.ctx().set_fonts(fonts);
-                    }
+                    self.theme.provider().setup_frame(ui.ctx());
 
+                    let current_theme_enum = self.theme;
                     let term_title_bar = |ui: &mut egui::Ui, title_text: &mut String, real_title: &mut String, pending_title: &mut Option<String>, subtitle: Option<&str>, sub_suffix: Option<&str>| -> (bool, bool, bool) {
                         let height = 18.0;
                         let term_bar_bg    = egui::Color32::BLACK;
-                        let term_bar_green = egui::Color32::from_rgb(0, 230, 65);
+                        let term_bar_green = current_theme_enum.provider().palette().title_bar_button_color;
                         // removed dim
                         let (rect, _resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::hover());
                         ui.painter().rect_filled(rect, egui::CornerRadius::ZERO, term_bar_bg);
@@ -762,7 +933,9 @@ impl ApplicationHandler for App {
                             .font(egui::FontId::monospace(13.0))
                             .text_color(term_bar_green)
                             .margin(egui::vec2(0.0, -1.0));
-                        let action = child_ui.add(edit);
+                        let mut action = child_ui.add(edit);
+                        crate::ui::widgets::maintain_text_selection_cache(ui.ctx(), &action, title_text, text_rect);
+                        if crate::ui::widgets::text_field_context_menu(current_theme_enum.provider(), &action, action.id, title_text) { action.mark_changed(); }
 
                         if action.gained_focus()
                             && let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), action.id) {
@@ -795,7 +968,7 @@ impl ApplicationHandler for App {
                     frame.shadow = egui::epaint::Shadow::NONE;
                     frame.corner_radius = egui::CornerRadius::ZERO;
 
-                    let panel_margin = if matches!(self.theme, Theme::Rect) { GAP_SM as i8 } else { 0 };
+                    let panel_margin = self.theme.provider().palette().panel_margin as i8;
 
                     let mut left_frame = frame;
                     left_frame.stroke = egui::Stroke::NONE;
@@ -814,21 +987,26 @@ impl ApplicationHandler for App {
                         .exact_size(260.0)
                         .frame(left_frame)
                         .show_inside(ui, |ui| {
-                            match self.theme {
-                                Theme::Dew => crate::ui::dew::draw_stripes(ui.painter(), ui.max_rect()),
-                                Theme::Future => crate::ui::future::draw_scan_lines(ui.painter(), ui.max_rect()),
-                                _ => {}
-                            }
-                            ui.style_mut().spacing.item_spacing.y = 0.0;
-                            include!("space_strategy.rs");
+                            self.theme.provider().draw_background_pattern(ui.painter(), ui.max_rect());
+                            
+                            ui.push_id("iseg_strat", |ui| {
+                                ui.style_mut().spacing.item_spacing.y = 0.0;
+                                include!("space_strategy.rs");
+                            });
 
                             ui.add_space(GAP_SM);
-                            ui.style_mut().spacing.item_spacing.y = 0.0;
-                            include!("color_river.rs");
+                            
+                            ui.push_id("iseg_river", |ui| {
+                                ui.style_mut().spacing.item_spacing.y = 0.0;
+                                include!("color_river.rs");
+                            });
 
                             ui.add_space(GAP_SM);
-                            ui.style_mut().spacing.item_spacing.y = 0.0;
-                            include!("system_metrics.rs");
+                            
+                            ui.push_id("iseg_sys", |ui| {
+                                ui.style_mut().spacing.item_spacing.y = 0.0;
+                                include!("system_metrics.rs");
+                            });
 
                             // Pin theme selector to the very bottom of the left panel
                             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
@@ -836,12 +1014,13 @@ impl ApplicationHandler for App {
                                 let mut ds = self.theme;
                                 let btn_text = match ds {
                                     Theme::Rect   => "Rect   ^",
+                                    Theme::Metallic => "Metallic^",
                                     Theme::Dew    => "Dew    ^",
                                     Theme::Future => "Future ^",
                                 };
-                                let resp = crate::ui::widgets::button_w(self.theme.provider(), ui, btn_text, 0.0);
+                                let resp = crate::ui::widgets::button_w(self.theme.provider(), ui, btn_text, 0.0, false).0;
                                 let popup_id = ui.make_persistent_id("theme_popup");
-                                if matches!(self.theme, Theme::Rect) {
+                                if self.theme.provider().palette().is_terminal_style {
                                     if resp.clicked() {
                                         egui::Popup::toggle_id(ui.ctx(), popup_id);
                                     }
@@ -895,6 +1074,7 @@ impl ApplicationHandler for App {
                                                             }
                                                         };
                                                         add_btn(ui, Theme::Rect, "Rect    ");
+                                                        add_btn(ui, Theme::Metallic, "Metallic");
                                                         add_btn(ui, Theme::Dew, "Dew     ");
                                                         add_btn(ui, Theme::Future, "Future  ");
                                                     });
@@ -924,16 +1104,7 @@ impl ApplicationHandler for App {
                                         ui.visuals_mut().widgets.hovered.bg_stroke = egui::Stroke::NONE;
                                         ui.visuals_mut().widgets.active.bg_stroke  = egui::Stroke::NONE;
 
-                                        // Sync hover highlights with text selection colors across themes
-                                        if matches!(self.theme, Theme::Dew) {
-                                            ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::from_rgb(180, 210, 255);
-                                            ui.visuals_mut().widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(180, 210, 255);
-                                        } else if matches!(self.theme, Theme::Future) {
-                                            ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::from_rgb(130, 148, 192); // FUTURE_GLOW matches the button reflection
-                                            ui.visuals_mut().widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(130, 148, 192);
-                                            // Make text dark when hovering over the bright accent
-                                            ui.visuals_mut().widgets.hovered.fg_stroke = egui::Stroke::new(1.0, egui::Color32::BLACK);
-                                        }
+                                        self.theme.provider().edit_popup_visuals(ui.visuals_mut());
 
                                         ui.set_min_width(resp.rect.width());
                                         let mut add_btn = |ui: &mut egui::Ui, t: Theme, label: &str| {
@@ -943,6 +1114,7 @@ impl ApplicationHandler for App {
                                             }
                                         };
                                         add_btn(ui, Theme::Rect, "Rect    ");
+                                        add_btn(ui, Theme::Metallic, "Metallic");
                                         add_btn(ui, Theme::Dew, "Dew     ");
                                         add_btn(ui, Theme::Future, "Future  ");
                                     });
@@ -962,33 +1134,20 @@ impl ApplicationHandler for App {
                         .exact_size(260.0)
                         .frame(right_frame)
                         .show_inside(ui, |ui| {
-                            match self.theme {
-                                Theme::Dew => crate::ui::dew::draw_stripes(ui.painter(), ui.max_rect()),
-                                Theme::Future => crate::ui::future::draw_scan_lines(ui.painter(), ui.max_rect()),
-                                _ => {}
-                            }
+                            self.theme.provider().draw_background_pattern(ui.painter(), ui.max_rect());
 
-                            match self.theme {
-                                Theme::Rect => {
+                            if self.theme.provider().palette().is_terminal_style {
                                     let (c_exit, c_min, c_max) = term_title_bar(ui, &mut self.title_text, &mut self.title, &mut pending_title, None, None);
                                     if c_exit { exit_req = true; }
                                     if c_min { minimize_req = true; }
                                     if c_max { fullscreen_req = true; }
-                                }
-                                Theme::Dew | Theme::Future => {
+                                } else {
                                     let height = 26.0;
                                     let (rect, _resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), egui::Sense::hover());
                                     let left = rect.min.x;
                                     let right = rect.max.x;
 
-                                    if matches!(self.theme, Theme::Dew) {
-                                        // 7 lines for Dew stripe titlebar layout
-                                        for i in 0..7 {
-                                            let y = rect.min.y + 2.0 + i as f32 * 3.5;
-                                            ui.painter().line_segment([egui::pos2(left, y), egui::pos2(right, y)], egui::Stroke::new(1.0, egui::Color32::from_rgb(205, 210, 218)));
-                                            ui.painter().line_segment([egui::pos2(left, y+1.0), egui::pos2(right, y+1.0)], egui::Stroke::new(1.0, egui::Color32::from_rgb(250, 255, 255)));
-                                        }
-                                    }
+                                    self.theme.provider().paint_title_bar_bg(ui, rect);
 
                                     let r = 8.0;
                                     let cy = rect.center().y;
@@ -1005,21 +1164,13 @@ impl ApplicationHandler for App {
                                         0.1,
                                     );
 
-                                    let btn_color = if matches!(self.theme, Theme::Future) {
-                                        egui::Color32::from_rgb(88, 94, 112) // FUTURE_BODY — match future big buttons
-                                    } else {
-                                        egui::Color32::from_rgb(50, 130, 240) // DEW_BODY — match dew big buttons
-                                    };
+                                    let btn_color = self.theme.provider().palette().title_bar_button_color;
 
                                     let draw_anim_gumdrop = |ui: &mut egui::Ui, id: &str, cx: f32, base_color: egui::Color32, symbol: &str| -> bool {
                                         let center = egui::pos2(right - cx, cy);
                                         let btn_size = egui::vec2(r * 2.0 + 2.0, r * 2.0 + 2.0);
                                         let resp = ui.interact(egui::Rect::from_center_size(center, btn_size), egui::Id::new(id), egui::Sense::click());
-                                        if matches!(self.theme, Theme::Future) {
-                                            crate::ui::future::draw_orb_btn(ui, &resp, r, base_color, symbol, Some(hover_t));
-                                        } else {
-                                            crate::ui::dew::draw_dot_btn(ui, &resp, r, base_color, symbol, Some(hover_t));
-                                        }
+                                        self.theme.provider().paint_title_bar_button(ui, &resp, r, base_color, symbol, hover_t);
                                         resp.clicked()
                                     };
 
@@ -1027,11 +1178,7 @@ impl ApplicationHandler for App {
                                     if draw_anim_gumdrop(ui, "tb_yellow", 34.0, btn_color, ".") { minimize_req = true; }
                                     if draw_anim_gumdrop(ui, "tb_green", 14.0, btn_color, "~") { fullscreen_req = true; }
 
-                                    let title_color = if matches!(self.theme, Theme::Future) {
-                                        egui::Color32::WHITE
-                                    } else {
-                                        egui::Color32::from_rgb(30, 30, 30)
-                                    };
+                                    let title_color = self.theme.provider().palette().title_bar_text_color;
 
                                     let font_id = egui::FontId::proportional(14.0);
                                     let galley = ui.painter().layout_no_wrap(self.title_text.clone(), font_id.clone(), title_color);
@@ -1039,13 +1186,7 @@ impl ApplicationHandler for App {
 
                                     let text_rect = egui::Rect::from_min_size(text_pos, galley.size());
 
-                                    if matches!(self.theme, Theme::Future) {
-                                        ui.painter().rect_filled(
-                                            text_rect.expand2(egui::vec2(4.0, -1.0)),
-                                            2.0,
-                                            egui::Color32::BLACK,
-                                        );
-                                    }
+                                    self.theme.provider().paint_title_bar_text_bg(ui, text_rect);
 
                                     let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(text_rect).layout(egui::Layout::left_to_right(egui::Align::TOP)));
                                     child_ui.visuals_mut().extreme_bg_color = egui::Color32::TRANSPARENT;
@@ -1059,7 +1200,9 @@ impl ApplicationHandler for App {
                                         .margin(egui::vec2(0.0, 0.0))
                                         .desired_width(150.0);
 
-                                    let action = child_ui.add(edit);
+                                    let mut action = child_ui.add(edit);
+                                    crate::ui::widgets::maintain_text_selection_cache(ui.ctx(), &action, &self.title_text, text_rect);
+                                    if crate::ui::widgets::text_field_context_menu(current_theme_enum.provider(), &action, action.id, &mut self.title_text) { action.mark_changed(); }
 
                                     if action.gained_focus()
                                         && let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), action.id) {
@@ -1084,89 +1227,129 @@ impl ApplicationHandler for App {
                                     }
 
                                 }
-                            }
 
                             egui::ScrollArea::vertical().scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden).show(ui, |ui| {
                                 ui.style_mut().spacing.item_spacing.y = 0.0;
-                                // Performance stats row — Dew inset pill / Editable seed
+
+                                // Moment hash row — copyable/pasteable snapshot of current state
                                 {
-                                    let noise_str = format!("noise:{:.2}", self.background_noise);
-                                    let full_text = format!("{}  ·  {}  ·  {:.0}fps", self.seed_text, noise_str, self.fps);
-                                    let stat_color = if matches!(self.theme, Theme::Rect) {
-                                        egui::Color32::from_rgb(0, 210, 60)
-                                    } else if matches!(self.theme, Theme::Future) {
-                                        egui::Color32::WHITE
-                                    } else {
-                                        egui::Color32::from_rgb(120, 120, 130)
+                                        let hash = format_moment_hash(&self.seed, self.t_epoch, self.t_residual, self.pan_x, self.pan_y, self.zoom);
+                                    let stat_color = self.theme.provider().palette().hash_stat_color;
+                                    let format_job = |s: &str| {
+                                        use egui::text::{LayoutJob, TextFormat};
+                                        let mut job = LayoutJob::default();
+                                        job.append(s, 0.0, TextFormat {
+                                            font_id: egui::FontId::new(13.0, egui::FontFamily::Proportional),
+                                            color: stat_color,
+                                            ..Default::default()
+                                        });
+                                        job
                                     };
 
-                                    let galley = ui.painter().layout_no_wrap(
-                                        full_text,
-                                        egui::FontId::monospace(11.0),
-                                        stat_color,
-                                    );
-                                    let padding = egui::vec2(8.0, 4.0);
+                                    let galley = ui.painter().layout_job(format_job(&hash));
+                                    let padding = egui::vec2(8.0, 3.0);
                                     let size = egui::vec2(ui.available_width(), galley.size().y + padding.y * 2.0);
                                     let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
 
                                     if ui.is_rect_visible(rect) {
-                                        let p = ui.painter();
-                                        if matches!(self.theme, Theme::Rect) {
-                                            p.rect_filled(rect, egui::CornerRadius::ZERO, egui::Color32::BLACK);
-                                            p.rect_stroke(rect, egui::CornerRadius::ZERO, egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 230, 65)), egui::StrokeKind::Outside);
-                                        } else {
-                                            let bg = if matches!(self.theme, Theme::Future) { egui::Color32::BLACK } else { egui::Color32::from_rgba_premultiplied(0, 0, 0, 18) };
-                                            p.rect_filled(rect, rect.height() / 2.0, bg);
-                                            crate::ui::dew::draw_inset(p, rect);
+                                        self.theme.provider().paint_hash_bg(ui.painter(), rect);
+
+                                        let btn_w = 26.0;
+                                        
+                                        let text_rect = egui::Rect::from_min_size(
+                                            rect.min + egui::vec2(padding.x, padding.y),
+                                            egui::vec2(rect.width() - padding.x - btn_w, galley.size().y),
+                                        );
+
+                                        let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(text_rect).layout(*ui.layout()));
+                                        child_ui.visuals_mut().extreme_bg_color = egui::Color32::TRANSPARENT;
+                                        child_ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
+                                        child_ui.visuals_mut().widgets.active.bg_fill = egui::Color32::TRANSPARENT;
+                                        child_ui.visuals_mut().selection.bg_fill = self.theme.provider().palette().hash_selection_color;
+                                        child_ui.visuals_mut().selection.stroke = egui::Stroke::new(1.0, egui::Color32::BLACK);
+
+                                        let mut layouter = |ui: &egui::Ui, string_buf: &dyn egui::TextBuffer, _wrap_width: f32| -> std::sync::Arc<egui::Galley> {
+                                            ui.painter().layout_job(format_job(string_buf.as_str()))
+                                        };
+
+                                        let edit = egui::TextEdit::singleline(&mut self.moment_hash_text)
+                                            .frame(egui::Frame::NONE)
+                                            .layouter(&mut layouter)
+                                            .desired_width(text_rect.width());
+                                        let mut hash_action = child_ui.add(edit);
+                                        crate::ui::widgets::maintain_text_selection_cache(ui.ctx(), &hash_action, &self.moment_hash_text, text_rect);
+                                        if crate::ui::widgets::text_field_context_menu(current_theme_enum.provider(), &hash_action, hash_action.id, &mut self.moment_hash_text) { hash_action.mark_changed(); }
+
+                                        // Ensure the button spans precisely the area from right of the text field to the right border
+                                        let btn_rect = egui::Rect::from_min_max(
+                                            egui::pos2(rect.max.x - btn_w, rect.min.y),
+                                            rect.max
+                                        );
+                                        
+                                        let btn_resp = ui.interact(btn_rect, egui::Id::new("hash_copy_btn"), egui::Sense::click());
+                                        
+                                        if btn_resp.clicked() {
+                                            ui.ctx().copy_text(hash.clone());
                                         }
 
-                                        let inner_rect = egui::Rect::from_center_size(rect.center(), galley.size());
-                                        let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(inner_rect).layout(*ui.layout()));
-                                        child_ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |child_ui| {
-                                            child_ui.spacing_mut().item_spacing.x = 0.0;
+                                        let is_down = btn_resp.is_pointer_button_down_on();
+                                        let is_hovered = btn_resp.hovered();
 
-                                            let font_id = egui::FontId::monospace(11.0);
-                                            let seed_w = child_ui.painter().layout_no_wrap(self.seed_text.clone(), font_id.clone(), stat_color).size().x;
+                                        let shift_y = self.theme.provider().paint_hash_copy_btn(ui, btn_rect, is_down, is_hovered);
+                                        ui.painter().text(
+                                            btn_rect.center() + egui::vec2(0.0, shift_y),
+                                            egui::Align2::CENTER_CENTER,
+                                            "📋",
+                                            egui::FontId::proportional(14.0),
+                                            self.theme.provider().button_text_color(),
+                                        );
 
-                                            // Invisible editable text
-                                            child_ui.visuals_mut().extreme_bg_color = egui::Color32::TRANSPARENT;
-                                            child_ui.visuals_mut().widgets.hovered.bg_fill = egui::Color32::TRANSPARENT;
-                                            child_ui.visuals_mut().widgets.active.bg_fill = egui::Color32::TRANSPARENT;
+                                        if hash_action.gained_focus() {
+                                            let clicked_at_end = if let Some(state) = egui::TextEdit::load_state(ui.ctx(), hash_action.id) {
+                                                if let Some(cursor) = state.cursor.char_range() {
+                                                    cursor.primary.index >= self.moment_hash_text.chars().count()
+                                                } else {
+                                                    false
+                                                }
+                                            } else {
+                                                false
+                                            };
 
-                                            let edit = egui::TextEdit::singleline(&mut self.seed_text)
-                                                .frame(egui::Frame::NONE)
-                                                .font(font_id.clone())
-                                                .text_color(stat_color)
-                                                .desired_width(seed_w.max(5.0)); // Prevent total collapse of width
+                                            self.moment_hash_text = hash.clone();
 
-                                            let seed_action = child_ui.add(edit);
-
-                                            child_ui.label(egui::RichText::new(format!("  ·  {}  ·  {:.0}fps", noise_str, self.fps))
-                                                .font(font_id)
-                                                .color(stat_color));
-
-                                            if seed_action.gained_focus()
-                                                && let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), seed_action.id) {
+                                            if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), hash_action.id) {
+                                                let end_idx = self.moment_hash_text.chars().position(|c| c == '-').unwrap_or_else(|| self.moment_hash_text.chars().count());
+                                                
+                                                if clicked_at_end {
+                                                    // highlight everything
                                                     state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
                                                         egui::text::CCursor::new(0),
-                                                        egui::text::CCursor::new(self.seed_text.chars().count()),
+                                                        egui::text::CCursor::new(self.moment_hash_text.chars().count()),
                                                     )));
-                                                    egui::TextEdit::store_state(ui.ctx(), seed_action.id, state);
+                                                } else {
+                                                    // highlight just the seed
+                                                    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                                                        egui::text::CCursor::new(0),
+                                                        egui::text::CCursor::new(end_idx),
+                                                    )));
                                                 }
-
-                                            if (seed_action.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter))) || seed_action.lost_focus() {
-                                                if self.seed_text != self.seed {
-                                                    if self.seed_text.trim().is_empty() {
-                                                        self.seed_text = self.seed.clone(); // Revert if blanked
-                                                    } else {
-                                                        self.seed = self.seed_text.clone();
-                                                        pending_reset = Some(false);
-                                                    }
-                                                }
-                                            } else if !seed_action.has_focus() {
-                                                self.seed_text = self.seed.clone();
+                                                
+                                                egui::TextEdit::store_state(ui.ctx(), hash_action.id, state);
                                             }
-                                        });
+                                        }
+
+                                        if hash_action.lost_focus() {
+                                            if self.moment_hash_text != hash
+                                                && let Some((seed, epoch, residual, px, py, zoom)) = parse_moment_hash(&self.moment_hash_text) {
+                                                    self.seed = seed.clone();
+                                                    self.seed_text = seed;
+                                                    self.pending_hash_jump = Some((epoch, residual, px, py, zoom));
+                                                    pending_reset = Some(false);
+                                                }
+                                            self.moment_hash_text = self.seed.clone(); // Revert to ghost mode
+                                        } else if !hash_action.has_focus() {
+                                            self.moment_hash_text = self.seed.clone(); // Ghost mode: naturally just show the seed
+                                        }
                                     }
                                 }
                                 ui.add_space(GAP_MD);
@@ -1178,21 +1361,45 @@ impl ApplicationHandler for App {
                                     let btn_w = (avail - 2.0 * btn_gap) / 3.0;
                                     ui.horizontal(|ui| {
                                         ui.style_mut().spacing.item_spacing.x = btn_gap;
-                                        if crate::ui::widgets::button_w(self.theme.provider(), ui, "<< R", btn_w).clicked() { rewind_req = true; }
-                                        if crate::ui::widgets::button_w(self.theme.provider(), ui, "⟳ C", btn_w).clicked() { reroll_req = true; }
+                                        if crate::ui::widgets::button_w(self.theme.provider(), ui, "⏪ R", btn_w, ui.input(|i| i.key_down(egui::Key::R))).0.clicked() { rewind_req = true; }
+                                        if crate::ui::widgets::button_w(self.theme.provider(), ui, "⟳ C", btn_w, ui.input(|i| i.key_down(egui::Key::C))).0.clicked() { reroll_req = true; }
                                         let label = if self.is_paused { "▶ Space" } else { "⏸ Space" };
-                                        if crate::ui::widgets::button_w(self.theme.provider(), ui, label, btn_w).clicked() { pause_req = true; }
+                                        if crate::ui::widgets::button_w(self.theme.provider(), ui, label, btn_w, ui.input(|i| i.key_down(egui::Key::Space))).0.clicked() { pause_req = true; }
                                     });
                                     ui.add_space(GAP_SM);
                                     ui.style_mut().spacing.item_spacing.y = 0.0;
-                                    if crate::ui::widgets::button_w(self.theme.provider(), ui, "⛶ Screenshot", avail).clicked() {
+                                    let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
+                                    let enter_down = ui.input(|i| i.key_down(egui::Key::Enter));
+                                    
+                                    let (btn_resp, push_y) = crate::ui::widgets::button_w(self.theme.provider(), ui, "⛶ Screenshot", avail, enter_down);
+                                    
+                                    let galley = ui.painter().layout_no_wrap("⛶ Screenshot".to_string(), egui::FontId::monospace(13.0), egui::Color32::WHITE);
+                                    let text_w = galley.size().x;
+                                    let enter_w = ui.painter().layout_no_wrap("↵".to_string(), egui::FontId::monospace(26.0), egui::Color32::WHITE).size().x;
+                                    let space_w = ui.painter().layout_no_wrap(" ".to_string(), egui::FontId::monospace(13.0), egui::Color32::WHITE).size().x;
+                                    // Compensate for 26pt monospace left bearing (~25% of its width)
+                                    let left_padding = enter_w * 0.25;
+                                    let overlay_pos = egui::pos2(
+                                        btn_resp.rect.center().x + text_w * 0.5 + space_w - left_padding,
+                                        btn_resp.rect.center().y - 5.0 + push_y,
+                                    );
+                                    ui.painter().text(
+                                        overlay_pos,
+                                        egui::Align2::LEFT_CENTER,
+                                        "↵",
+                                        egui::FontId::monospace(26.0),
+                                        self.theme.provider().button_text_color(),
+                                    );
+
+                                    if btn_resp.clicked() || (enter_pressed && !ui.ctx().egui_wants_keyboard_input()) {
                                         self.take_screenshot = true;
                                     }
+
                                     ui.add_space(GAP_MD);
                                 }
 
                                 // Speed slider: left = reverse, center = 0, right = forward
-                                let speed_resp = ui.vertical(|ui| {
+                                let speed_resp = ui.push_id("speed_slider_sec", |ui| ui.vertical(|ui| {
                                     ui.style_mut().spacing.item_spacing.y = GAP_XS;
                                     let lbl_galley = ui.painter().layout_no_wrap("TIME TRAVEL".to_string(), egui::FontId::monospace(8.0), egui::Color32::BLACK);
                                     let label_h = lbl_galley.size().y;
@@ -1208,13 +1415,15 @@ impl ApplicationHandler for App {
                                                 ui.add_space(label_h);
                                                 let btn_row = ui.horizontal(|ui| {
                                                     ui.style_mut().spacing.item_spacing.x = if matches!(self.theme, Theme::Rect) { 3.0 } else { GAP_XS };
-                                                    let r = self.theme.provider().key_cap_small(ui, "↓", btn_side, 26.0);
+                                                    let is_dn = ui.input(|i| i.key_down(egui::Key::ArrowDown));
+                                                    let is_up = ui.input(|i| i.key_down(egui::Key::ArrowUp));
+                                                    let r = self.theme.provider().key_cap_small(ui, "↓", btn_side, 26.0, is_dn);
                                                     if r.clicked() { arrow_down_req = true; }
-                                                    let r = self.theme.provider().key_cap_small(ui, "↑", btn_side, 26.0);
+                                                    let r = self.theme.provider().key_cap_small(ui, "↑", btn_side, 26.0, is_up);
                                                     if r.clicked() { arrow_up_req = true; }
                                                 });
                                                 let center_x = btn_row.response.rect.center().x;
-                                                let color = if matches!(self.theme, Theme::Rect) { egui::Color32::from_rgb(0, 230, 65) } else if matches!(self.theme, Theme::Future) { egui::Color32::WHITE } else { egui::Color32::from_rgb(100, 100, 110) };
+                                                let color = self.theme.provider().palette().panel_text_color;
                                                 let font = egui::FontId::monospace(8.0);
                                                 let text = "SLOW  FAST";
                                                 let galley = ui.painter().layout_no_wrap(text.to_string(), font, color);
@@ -1247,9 +1456,7 @@ impl ApplicationHandler for App {
                                                 self.wave_speed = self.custom_speed;
                                             }
                                         }
-                                        if speed_action.lost_focus() {
-                                            self.speed_text = crate::ui::window::format_speed_text(self.custom_speed);
-                                        } else if !speed_action.has_focus() {
+                                        if !speed_action.has_focus() {
                                             self.speed_text = crate::ui::window::format_speed_text(self.custom_speed);
                                         }
                                     });
@@ -1262,7 +1469,11 @@ impl ApplicationHandler for App {
                                     );
                                     if r.changed() { self.speed_text = crate::ui::window::format_speed_text(self.custom_speed); }
                                     r
-                                }).inner;
+                                }).inner).inner;
+                                if speed_resp.drag_started()
+                                    && let Some(id) = ui.memory(|mem| mem.focused()) {
+                                        ui.memory_mut(|mem| mem.surrender_focus(id));
+                                    }
                                 if speed_resp.changed() {
                                     self.wave_speed = self.custom_speed;
                                 }
@@ -1273,7 +1484,7 @@ impl ApplicationHandler for App {
                                 const PERIOD_SL: f64 = std::f64::consts::TAU / 0.1;
                                 let t_display_max = (i64::MAX as f64) * PERIOD_SL;
                                 let mut t_display = self.t_epoch as f64 * PERIOD_SL + self.t_residual;
-                                let time_resp = ui.vertical(|ui| {
+                                let time_resp = ui.push_id("time_slider_sec", |ui| ui.vertical(|ui| {
                                     ui.style_mut().spacing.item_spacing.y = GAP_XS;
                                     let lbl_galley = ui.painter().layout_no_wrap("TIME TRAVEL".to_string(), egui::FontId::monospace(8.0), egui::Color32::BLACK);
                                     let label_h = lbl_galley.size().y;
@@ -1289,13 +1500,15 @@ impl ApplicationHandler for App {
                                                 ui.add_space(label_h);
                                                 let btn_row = ui.horizontal(|ui| {
                                                     ui.style_mut().spacing.item_spacing.x = if matches!(self.theme, Theme::Rect) { 3.0 } else { GAP_XS };
-                                                    let r = self.theme.provider().key_cap_small_rotated(ui, "↑", -std::f32::consts::FRAC_PI_2, btn_side, 26.0);
+                                                    let is_l = ui.input(|i| i.key_down(egui::Key::ArrowLeft));
+                                                    let is_r = ui.input(|i| i.key_down(egui::Key::ArrowRight));
+                                                    let r = self.theme.provider().key_cap_small_rotated(ui, "↑", -std::f32::consts::FRAC_PI_2, btn_side, 26.0, is_l);
                                                     if r.clicked() { arrow_left_req = true; }
-                                                    let r = self.theme.provider().key_cap_small_rotated(ui, "↑", std::f32::consts::FRAC_PI_2, btn_side, 26.0);
+                                                    let r = self.theme.provider().key_cap_small_rotated(ui, "↑", std::f32::consts::FRAC_PI_2, btn_side, 26.0, is_r);
                                                     if r.clicked() { arrow_right_req = true; }
                                                 });
                                                 let center_x = btn_row.response.rect.center().x;
-                                                let color = if matches!(self.theme, Theme::Rect) { egui::Color32::from_rgb(0, 230, 65) } else if matches!(self.theme, Theme::Future) { egui::Color32::WHITE } else { egui::Color32::from_rgb(100, 100, 110) };
+                                                let color = self.theme.provider().palette().panel_text_color;
                                                 let font = egui::FontId::monospace(8.0);
                                                 let text = "TIME TRAVEL";
                                                 let galley = ui.painter().layout_no_wrap(text.to_string(), font, color);
@@ -1345,9 +1558,12 @@ impl ApplicationHandler for App {
                                     );
                                     if r.changed() { self.time_text = crate::ui::window::format_time_text(t_display); }
                                     r
-                                }).inner;
+                                }).inner).inner;
 
                                 if time_resp.drag_started() {
+                                    if let Some(id) = ui.memory(|mem| mem.focused()) {
+                                        ui.memory_mut(|mem| mem.surrender_focus(id));
+                                    }
                                     let was_playing = !self.is_paused;
                                     ui.memory_mut(|mem| mem.data.insert_temp(time_resp.id.with("was_playing"), was_playing));
                                 }
@@ -1398,43 +1614,98 @@ impl ApplicationHandler for App {
 
                             ui.add_space(GAP_MD);
                             ui.style_mut().spacing.item_spacing.y = 0.0;
+                            include!("camera_rig.rs");
+
+                            ui.add_space(GAP_MD);
+                            ui.style_mut().spacing.item_spacing.y = 0.0;
                             include!("superposition.rs");
                                 ui.add_space(GAP_SM);
                             }); // scroll area
                         }); // side panel
 
-                    if matches!(self.theme, Theme::Rect) {
-                        let left_x = left_panel_res.response.rect.right();
-                        let right_x = right_panel_res.response.rect.left();
-                        let top_y = 0.0;
-                        let bottom_y = ui.ctx().input(|i| i.content_rect()).height();
+                    let left_x = left_panel_res.response.rect.right();
+                    let right_x = right_panel_res.response.rect.left();
+                    let top_y = 0.0;
+                    let bottom_y = ui.ctx().input(|i| i.content_rect()).height();
 
-                        let sim_rect = egui::Rect::from_min_max(
-                            egui::pos2(left_x, top_y),
-                            egui::pos2(right_x, bottom_y),
-                        );
+                    let sim_rect = egui::Rect::from_min_max(
+                        egui::pos2(left_x, top_y),
+                        egui::pos2(right_x, bottom_y),
+                    );
+                    self.theme.provider().paint_sim_area_border(ui, sim_rect);
 
-                        ui.ctx().layer_painter(egui::LayerId::background()).rect_stroke(
-                            sim_rect,
-                            egui::CornerRadius::ZERO,
-                            egui::Stroke::new(1.0, egui::Color32::from_rgb(0, 230, 65)),
-                            egui::StrokeKind::Outside,
-                        );
+                    let sim_resp = ui.interact(sim_rect, egui::Id::new("sim_area_ctx"), egui::Sense::click());
+                    
+                    // Capture mouse wheel exclusively upon the simulation window
+                    if sim_resp.hovered() {
+                        let zoom_delta = ui.ctx().input(|i| i.zoom_delta());
+                        if zoom_delta != 1.0 {
+                            self.zoom *= zoom_delta;
+                            self.field_force_redraw = true;
+                        }
+                        
+                        let scroll_delta = ui.ctx().input(|i| i.smooth_scroll_delta.y);
+                        if scroll_delta != 0.0 {
+                            if scroll_delta > 0.0 {
+                                self.zoom *= 1.1f32.powf(scroll_delta / 20.0);
+                            } else {
+                                self.zoom /= 1.1f32.powf(-scroll_delta / 20.0);
+                            }
+                            self.field_force_redraw = true;
+                        }
                     }
+
+                    sim_resp.context_menu(|ui| {
+                        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                        current_theme_enum.provider().edit_popup_visuals(ui.visuals_mut());
+                        current_theme_enum.provider().edit_popup_spacing(ui.spacing_mut());
+                        let sp = if current_theme_enum.provider().palette().is_terminal_style { " " } else { "  " };
+                        if ui.button(format!("⛶{sp}Screenshot")).clicked() {
+                            self.take_screenshot = true;
+                            ui.close();
+                        }
+                        if ui.button(format!("📋{sp}Copy hash")).clicked() {
+                            let full = format_moment_hash(&self.seed, self.t_epoch, self.t_residual, self.pan_x, self.pan_y, self.zoom);
+                            ui.ctx().copy_text(full);
+                            ui.close();
+                        }
+                        ui.separator();
+                        let pause_label = if self.is_paused { format!("▶{sp}Resume") } else { format!("⏸{sp}Pause") };
+                        if ui.button(pause_label).clicked() {
+                            pause_req = true;
+                            ui.close();
+                        }
+                        if ui.button(format!("⏪{sp}Rewind")).clicked() {
+                            rewind_req = true;
+                            ui.close();
+                        }
+                        if ui.button(format!("⟳{sp}Change")).clicked() {
+                            reroll_req = true;
+                            ui.close();
+                        }
+                        if ui.button(format!("🏠{sp}Reset view")).clicked() {
+                            reset_view_req = true;
+                            ui.close();
+                        }
+                    });
                 });
 
-                if exit_req { event_loop.exit(); }
+                if exit_req {
+                    event_loop.exit();
+                }
                 if minimize_req {
                     if state.window.fullscreen().is_some() {
                         // macOS fullscreen transition takes ~500-700ms, wait 800ms to be safe
-                        self.pending_minimize_time = Some(std::time::Instant::now() + std::time::Duration::from_millis(800));
+                        self.pending_minimize_time =
+                            Some(std::time::Instant::now() + std::time::Duration::from_millis(800));
                         state.window.set_fullscreen(None);
                         state.window.request_redraw(); // Keep the pump going
                     } else {
                         state.window.set_minimized(true);
                     }
                 }
-                if rewind_req {                    self.t_epoch = 0;
+                if rewind_req {
+                    self.t_epoch = 0;
                     self.t_residual = 0.0;
                     self.wave_speed = 1.0;
                     self.custom_speed = 1.0;
@@ -1462,6 +1733,15 @@ impl ApplicationHandler for App {
                     }
                     state.window.request_redraw();
                 }
+                if reset_view_req {
+                    self.pan_x = 0.0;
+                    self.pan_y = 0.0;
+                    self.zoom = 1.0;
+                    self.field_force_redraw = true;
+                    // Reset 3D scanner/tracker orientation
+                    self.strategy_engine.reset_view();
+                    state.window.request_redraw();
+                }
                 if let Some(s) = speed_req {
                     self.speed = s;
                     self.wave_speed = match s {
@@ -1480,36 +1760,138 @@ impl ApplicationHandler for App {
                 }
                 if arrow_up_req || arrow_down_req {
                     const LADDER: &[f64] = &[
-                        -1e18, -5e17, -2e17, -1e17, -5e16, -2e16, -1e16,
-                        -5e15, -2e15, -1e15, -5e14, -2e14, -1e14,
-                        -5e13, -2e13, -1e13, -5e12, -2e12, -1e12,
-                        -5e11, -2e11, -1e11, -5e10, -2e10, -1e10,
-                        -5e9, -2e9, -1e9, -5e8, -2e8, -1e8,
-                        -5e7, -2e7, -1e7, -5e6, -2e6, -1_000_000.0,
-                        -500_000.0, -200_000.0, -100_000.0,
-                        -50_000.0, -20_000.0, -10_000.0,
-                        -5_000.0, -2_000.0, -1_000.0,
-                        -500.0, -200.0, -100.0,
-                        -50.0, -20.0, -10.0, -5.0, -2.0, -1.0, -0.5, -0.25,
+                        -1e18,
+                        -5e17,
+                        -2e17,
+                        -1e17,
+                        -5e16,
+                        -2e16,
+                        -1e16,
+                        -5e15,
+                        -2e15,
+                        -1e15,
+                        -5e14,
+                        -2e14,
+                        -1e14,
+                        -5e13,
+                        -2e13,
+                        -1e13,
+                        -5e12,
+                        -2e12,
+                        -1e12,
+                        -5e11,
+                        -2e11,
+                        -1e11,
+                        -5e10,
+                        -2e10,
+                        -1e10,
+                        -5e9,
+                        -2e9,
+                        -1e9,
+                        -5e8,
+                        -2e8,
+                        -1e8,
+                        -5e7,
+                        -2e7,
+                        -1e7,
+                        -5e6,
+                        -2e6,
+                        -1_000_000.0,
+                        -500_000.0,
+                        -200_000.0,
+                        -100_000.0,
+                        -50_000.0,
+                        -20_000.0,
+                        -10_000.0,
+                        -5_000.0,
+                        -2_000.0,
+                        -1_000.0,
+                        -500.0,
+                        -200.0,
+                        -100.0,
+                        -50.0,
+                        -20.0,
+                        -10.0,
+                        -5.0,
+                        -2.0,
+                        -1.0,
+                        -0.5,
+                        -0.25,
                         0.0,
-                        0.25, 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0,
-                        100.0, 200.0, 500.0,
-                        1_000.0, 2_000.0, 5_000.0,
-                        10_000.0, 20_000.0, 50_000.0,
-                        100_000.0, 200_000.0, 500_000.0,
-                        1_000_000.0, 2e6, 5e6,
-                        1e7, 2e7, 5e7, 1e8, 2e8, 5e8,
-                        1e9, 2e9, 5e9, 1e10, 2e10, 5e10,
-                        1e11, 2e11, 5e11, 1e12, 2e12, 5e12,
-                        1e13, 2e13, 5e13, 1e14, 2e14, 5e14,
-                        1e15, 2e15, 5e15, 1e16, 2e16, 5e16,
-                        1e17, 2e17, 5e17, 1e18,
+                        0.25,
+                        0.5,
+                        1.0,
+                        2.0,
+                        5.0,
+                        10.0,
+                        20.0,
+                        50.0,
+                        100.0,
+                        200.0,
+                        500.0,
+                        1_000.0,
+                        2_000.0,
+                        5_000.0,
+                        10_000.0,
+                        20_000.0,
+                        50_000.0,
+                        100_000.0,
+                        200_000.0,
+                        500_000.0,
+                        1_000_000.0,
+                        2e6,
+                        5e6,
+                        1e7,
+                        2e7,
+                        5e7,
+                        1e8,
+                        2e8,
+                        5e8,
+                        1e9,
+                        2e9,
+                        5e9,
+                        1e10,
+                        2e10,
+                        5e10,
+                        1e11,
+                        2e11,
+                        5e11,
+                        1e12,
+                        2e12,
+                        5e12,
+                        1e13,
+                        2e13,
+                        5e13,
+                        1e14,
+                        2e14,
+                        5e14,
+                        1e15,
+                        2e15,
+                        5e15,
+                        1e16,
+                        2e16,
+                        5e16,
+                        1e17,
+                        2e17,
+                        5e17,
+                        1e18,
                     ];
                     let cur = self.wave_speed;
-                    let idx = LADDER.iter().enumerate()
-                        .min_by(|(_, a), (_, b)| ((**a - cur).abs()).partial_cmp(&((**b - cur).abs())).unwrap())
-                        .map(|(i, _)| i).unwrap_or(7);
-                    let new_idx = if arrow_up_req { (idx + 1).min(LADDER.len() - 1) } else { idx.saturating_sub(1) };
+                    let idx = LADDER
+                        .iter()
+                        .enumerate()
+                        .min_by(|(_, a), (_, b)| {
+                            ((**a - cur).abs())
+                                .partial_cmp(&((**b - cur).abs()))
+                                .unwrap()
+                        })
+                        .map(|(i, _)| i)
+                        .unwrap_or(7);
+                    let new_idx = if arrow_up_req {
+                        (idx + 1).min(LADDER.len() - 1)
+                    } else {
+                        idx.saturating_sub(1)
+                    };
                     let new_speed = LADDER[new_idx];
                     if new_speed == 0.0 {
                         self.is_paused = true;
@@ -1532,7 +1914,11 @@ impl ApplicationHandler for App {
                     } else {
                         10f64.powi(current_t.abs().log10().floor() as i32)
                     };
-                    if arrow_left_req { self.t_residual -= jump; } else { self.t_residual += jump; }
+                    if arrow_left_req {
+                        self.t_residual -= jump;
+                    } else {
+                        self.t_residual += jump;
+                    }
                     if self.t_residual >= PERIOD {
                         let extra = (self.t_residual / PERIOD).floor() as i64;
                         self.t_epoch = self.t_epoch.saturating_add(extra);
@@ -1542,7 +1928,7 @@ impl ApplicationHandler for App {
                         self.t_epoch = self.t_epoch.saturating_sub(borrow);
                         self.t_residual += borrow as f64 * PERIOD;
                     }
-                    
+
                     let new_t = self.t_epoch as f64 * PERIOD + self.t_residual;
                     self.time_text = crate::ui::window::format_time_text(new_t);
                     state.window.request_redraw();
@@ -1550,6 +1936,15 @@ impl ApplicationHandler for App {
                 state
                     .egui_state
                     .handle_platform_output(&state.window, full_output.platform_output);
+
+                for output in full_output.viewport_output.values() {
+                    for command in &output.commands {
+                        if *command == egui::ViewportCommand::RequestPaste {
+                            self.pending_paste = state.egui_state.clipboard_text();
+                        }
+                    }
+                }
+
                 let tris = state
                     .egui_ctx
                     .tessellate(full_output.shapes, state.window.scale_factor() as f32);
@@ -1560,7 +1955,8 @@ impl ApplicationHandler for App {
                 }
 
                 let frame = match state.surface.get_current_texture() {
-                    wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+                    wgpu::CurrentSurfaceTexture::Success(t)
+                    | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
                     _ => return,
                 };
                 let view = frame.texture.create_view(&Default::default());
@@ -1603,16 +1999,21 @@ impl ApplicationHandler for App {
                     // Advance COLOR RIVER: push one real prominence snapshot per frame,
                     // bundled with the current color palette so past columns stay accurate.
                     let t_now = self.t_epoch as f64 * PERIOD + self.t_residual;
-                    let prominence = wave_prominence_at(&self.env_data, t_now, self.background_noise)
-                        .iter().map(|&f| (f * 1000.0) as u32).collect::<Vec<_>>();
+                    let prominence =
+                        wave_prominence_at(&self.env_data, t_now, self.background_noise)
+                            .iter()
+                            .map(|&f| (f * 1000.0) as u32)
+                            .collect::<Vec<_>>();
 
                     if self.wave_speed >= 0.0 {
-                        self.history.push_back((prominence, self.wave_colors.clone()));
+                        self.history
+                            .push_back((prominence, self.wave_colors.clone()));
                         if self.history.len() > 240 {
                             self.history.pop_front();
                         }
                     } else {
-                        self.history.push_front((prominence, self.wave_colors.clone()));
+                        self.history
+                            .push_front((prominence, self.wave_colors.clone()));
                         if self.history.len() > 240 {
                             self.history.pop_back();
                         }
@@ -1626,18 +2027,27 @@ impl ApplicationHandler for App {
                     let current_t = self.t_epoch as f64 * PERIOD + self.t_residual;
                     let mut audio_params = [0.0f32; 15];
                     for w in 0..3 {
-                        let gn = crate::ui::ascii_render::get_gn_at_time(&self.env_data, w, current_t, self.background_noise as f64);
+                        let gn = crate::ui::ascii_render::get_gn_at_time(
+                            &self.env_data,
+                            w,
+                            current_t,
+                            self.background_noise as f64,
+                        );
                         let params = crate::ui::ascii_render::get_params(&self.env_data, w, gn);
 
                         // Audio Pipeline Injection
                         let base = w * 5;
-                        audio_params[base] = params[0] as f32;     // amp
+                        audio_params[base] = params[0] as f32; // amp
                         audio_params[base + 1] = params[1] as f32; // freq
                         audio_params[base + 2] = params[2] as f32; // angle
                         audio_params[base + 3] = params[3] as f32; // shape
                         audio_params[base + 4] = params[4] as f32; // warp
 
-                        self.wave_colors[w] = crate::ui::espresso_walk::params_to_color(self.wave_lch[w], params, self.wave_params0[w]);
+                        self.wave_colors[w] = crate::ui::espresso_walk::params_to_color(
+                            self.wave_lch[w],
+                            params,
+                            self.wave_params0[w],
+                        );
                     }
                     self.synth_engine.set_params(audio_params);
 
@@ -1645,14 +2055,23 @@ impl ApplicationHandler for App {
                     // crosses over identically on screen!
                     let wc = &self.wave_colors;
                     let wc_data: [f32; 12] = [
-                        wc[0].r() as f32 / 255.0, wc[0].g() as f32 / 255.0, wc[0].b() as f32 / 255.0, 0.0,
-                        wc[1].r() as f32 / 255.0, wc[1].g() as f32 / 255.0, wc[1].b() as f32 / 255.0, 0.0,
-                        wc[2].r() as f32 / 255.0, wc[2].g() as f32 / 255.0, wc[2].b() as f32 / 255.0, 0.0,
+                        wc[0].r() as f32 / 255.0,
+                        wc[0].g() as f32 / 255.0,
+                        wc[0].b() as f32 / 255.0,
+                        0.0,
+                        wc[1].r() as f32 / 255.0,
+                        wc[1].g() as f32 / 255.0,
+                        wc[1].b() as f32 / 255.0,
+                        0.0,
+                        wc[2].r() as f32 / 255.0,
+                        wc[2].g() as f32 / 255.0,
+                        wc[2].b() as f32 / 255.0,
+                        0.0,
                     ];
                     let color_buf = &state.color_buf;
-                    self.queue.write_buffer(color_buf, 0, bytemuck::cast_slice(&wc_data));
+                    self.queue
+                        .write_buffer(color_buf, 0, bytemuck::cast_slice(&wc_data));
                 }
-
 
                 // Egui rendering boilerplate:
                 // tick = residual (precise f32 phase within period)
@@ -1668,16 +2087,16 @@ impl ApplicationHandler for App {
                         t_epoch_f,
                         self.pan_x,
                         self.pan_y,
+                        self.zoom,
                         0.0f32,
                         0.0f32,
-                        0.0f32
                     ]),
                 );
 
                 let w = screen_descriptor.size_in_pixels[0] as f32;
                 let h = screen_descriptor.size_in_pixels[1] as f32;
 
-                let padding_logical = if matches!(self.theme, Theme::Rect) { 4.0 } else { 0.0 };
+                let padding_logical = self.theme.provider().sim_area_padding();
                 let padding_px = padding_logical * screen_descriptor.pixels_per_point;
 
                 // Pillarbox: keep the sim square within the area between both panels
@@ -1690,7 +2109,7 @@ impl ApplicationHandler for App {
 
                 // ── Pass 1: field shader → offscreen texture (only when T changed) ──
                 let field_dirty = self.field_force_redraw
-                    || self.t_epoch    != self.last_rendered_epoch
+                    || self.t_epoch != self.last_rendered_epoch
                     || (self.t_residual - self.last_rendered_residual).abs() > 1e-12;
 
                 if field_dirty {
@@ -1702,35 +2121,32 @@ impl ApplicationHandler for App {
                         self.t_residual,
                         self.background_noise,
                     );
-                    self.queue.write_buffer(
-                        &state.wave_cache_buf,
-                        0,
-                        bytemuck::cast_slice(&cache),
-                    );
+                    self.queue
+                        .write_buffer(&state.wave_cache_buf, 0, bytemuck::cast_slice(&cache));
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("field-pass"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view:           &state.field_view, // offscreen
+                            view: &state.field_view, // offscreen
                             resolve_target: None,
                             ops: wgpu::Operations {
-                                load:  wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                                 store: wgpu::StoreOp::Store,
                             },
                             depth_slice: None,
                         })],
                         depth_stencil_attachment: None,
-                        timestamp_writes:         None,
-                        occlusion_query_set:      None,
-                        multiview_mask:           None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
                     });
                     pass.set_pipeline(&state.pipeline);
                     pass.set_viewport(vx, vy, side, side, 0.0, 1.0);
                     pass.set_bind_group(0, &state.bg, &[]);
                     pass.draw(0..4, 0..1);
 
-                    self.last_rendered_epoch    = self.t_epoch;
+                    self.last_rendered_epoch = self.t_epoch;
                     self.last_rendered_residual = self.t_residual;
-                    self.field_force_redraw     = false;
+                    self.field_force_redraw = false;
                 }
 
                 // ── Pass 2: blit cached field + egui → swap-chain surface (every frame) ──
@@ -1738,18 +2154,18 @@ impl ApplicationHandler for App {
                     let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                         label: Some("compose-pass"),
                         color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view:           &view, // swap-chain surface
+                            view: &view, // swap-chain surface
                             resolve_target: None,
                             ops: wgpu::Operations {
-                                load:  wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                                 store: wgpu::StoreOp::Store,
                             },
                             depth_slice: None,
                         })],
                         depth_stencil_attachment: None,
-                        timestamp_writes:         None,
-                        occlusion_query_set:      None,
-                        multiview_mask:           None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                        multiview_mask: None,
                     });
                     // Blit cached field (cheap — one texture lookup per pixel)
                     pass.set_pipeline(&state.blit_pipeline);
@@ -1770,15 +2186,20 @@ impl ApplicationHandler for App {
                 // We use the exact physical time elapsed since the very start of the last frame (dt).
                 // If the user doesn't move the mouse and the simulation is at 4 TPS, this naturally
                 // reads 4 FPS. When they interact with the UI, it instantly jumps up to monitor_hz.
-                let inst_fps = if dt > 0.0 {
-                    1.0 / dt
-                } else {
-                    monitor_hz
-                };
+                let inst_fps = if dt > 0.0 { 1.0 / dt } else { monitor_hz };
 
                 // Clamp to monitor refresh rate so a 1ms frame (1000 FPS) doesn't swing the average wildly.
                 let inst_fps = inst_fps.min(monitor_hz);
                 self.fps = self.fps * 0.9 + inst_fps * 0.1;
+
+                // Refresh temperature sensors every 2 seconds
+                if self.last_temp_refresh.elapsed().as_secs_f32() >= 2.0 {
+                    self.sys_components.refresh(true);
+                    self.sys_temps = self.sys_components.iter()
+                        .filter_map(|c| c.temperature().map(|t| (c.label().to_string(), t)))
+                        .collect();
+                    self.last_temp_refresh = std::time::Instant::now();
+                }
 
                 if self.take_screenshot {
                     self.take_screenshot = false;
@@ -1800,9 +2221,11 @@ impl ApplicationHandler for App {
                         mapped_at_creation: false,
                     });
 
-                    let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                        label: Some("screenshot_encoder"),
-                    });
+                    let mut encoder =
+                        self.device
+                            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                                label: Some("screenshot_encoder"),
+                            });
 
                     encoder.copy_texture_to_buffer(
                         wgpu::TexelCopyTextureInfo {
@@ -1846,21 +2269,24 @@ impl ApplicationHandler for App {
                         capture_buffer.unmap(); // Immediately free the buffer
 
                         let format = state.config.format;
-                        let current_seed = self.seed.clone();
-                        let current_time = self.t_epoch as f64 * (std::f64::consts::TAU / 0.1) + self.t_residual;
+                        // Format the filename elegantly: Seed @ Time : Pan : Zoom
+                        let safe_hash = format_moment_hash(&self.seed, self.t_epoch, self.t_residual, self.pan_x, self.pan_y, self.zoom);
+                        
                         // Spawn a background thread so PNG compression doesn't freeze the UI
                         std::thread::spawn(move || {
                             let mut img = image::ImageBuffer::<image::Rgba<u8>, _>::new(w, h);
                             for y in 0..h {
                                 for x in 0..w {
-                                    let offset = (y * padded_bytes_per_row + x * bytes_per_pixel) as usize;
+                                    let offset =
+                                        (y * padded_bytes_per_row + x * bytes_per_pixel) as usize;
                                     let r = raw_data[offset];
                                     let g = raw_data[offset + 1];
                                     let b = raw_data[offset + 2];
                                     let a = raw_data[offset + 3];
 
                                     match format {
-                                        wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => {
+                                        wgpu::TextureFormat::Bgra8Unorm
+                                        | wgpu::TextureFormat::Bgra8UnormSrgb => {
                                             img.put_pixel(x, y, image::Rgba([b, g, r, a]));
                                         }
                                         _ => {
@@ -1870,8 +2296,7 @@ impl ApplicationHandler for App {
                                 }
                             }
 
-                            let time_str = format!("{:.1}", current_time).replace('.', "_");
-                            let filename = format!("anytimeuniverse-{}-{}.png", current_seed, time_str);
+                            let filename = format!("anytimeuniverse-{}.png", safe_hash);
                             if let Err(e) = img.save(&filename) {
                                 println!("[ ui   ] failed to save screenshot: {}", e);
                             } else {
@@ -1899,12 +2324,14 @@ impl ApplicationHandler for App {
                 // go fully event-driven: no redraws until the user interacts. GPU usage → ~0%.
                 // When running, always request the next frame — VSync in frame.present() caps
                 // the rate to the monitor refresh rate without CPU spinning.
-                let truly_idle = self.is_paused
-                    && repaint_delay >= std::time::Duration::from_millis(200);
+                let truly_idle =
+                    self.is_paused && repaint_delay >= std::time::Duration::from_millis(200);
 
                 if !truly_idle {
                     state.window.request_redraw();
-                    self.sim_handle.ui_requested_frame.store(true, std::sync::atomic::Ordering::Relaxed);
+                    self.sim_handle
+                        .ui_requested_frame
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
                 }
 
                 if truly_idle {
@@ -1921,7 +2348,11 @@ impl ApplicationHandler for App {
                 if fullscreen_req || self.pending_fullscreen_toggle {
                     self.pending_fullscreen_toggle = false;
                     let is_fs = state.window.fullscreen().is_some();
-                    state.window.set_fullscreen(if is_fs { None } else { Some(winit::window::Fullscreen::Borderless(None)) });
+                    state.window.set_fullscreen(if is_fs {
+                        None
+                    } else {
+                        Some(winit::window::Fullscreen::Borderless(None))
+                    });
                     // Reset cursor: platform briefly shows a native resize cursor during the
                     // window-bounds change; override it back to the default arrow.
                     state.window.set_cursor(winit::window::CursorIcon::Default);
@@ -1933,6 +2364,14 @@ impl ApplicationHandler for App {
 
                 if let Some(reset) = pending_reset {
                     self.reset_simulation(reset);
+                }
+                if let Some((epoch, residual, px, py, zoom)) = self.pending_hash_jump.take() {
+                    self.t_epoch = epoch;
+                    self.t_residual = residual;
+                    self.pan_x = px;
+                    self.pan_y = py;
+                    self.zoom = zoom;
+                    self.field_force_redraw = true;
                 }
             }
             _ => {}

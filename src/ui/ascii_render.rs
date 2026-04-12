@@ -452,7 +452,7 @@ fn wave_status(env: &[f32; 24], noise: f64, t: f64, wave_colors: &[[f64; 3]; 3],
         let state_str = if energy > 0.0 { "active" } else { "zeroed" };
         let _ = write!(
             out,
-            "\x1b[38;2;{r};{g};{b}m W{i}\x1b[0m  gn:{gn:>4}  resn:{resonance:>4.2}  pwr:{power:.2}  energy:{energy:+.2}  ["
+            "\x1b[38;2;{r};{g};{b}m wave{i}\x1b[0m  gn:{gn:>4}  resn:{resonance:>4.2}  pwr:{power:.2}  energy:{energy:+.2}  ["
         );
         for j in 0..bar_len {
             if j < filled { out.push('█') } else { out.push('░') }
@@ -725,7 +725,7 @@ pub fn run(seed: &str, background_noise: f32, initial_wave_colors: [[f64; 3]; 3]
                         if j < (power * 12.0) as usize { '█' } else { '░' }
                     }).collect();
                     let _ = write!(buf,
-                        "\x1b[2K\r  \x1b[38;2;{r};{g};{b}mW{i}\x1b[0m \
+                        "\x1b[2K\r  \x1b[38;2;{r};{g};{b}mwave{i}\x1b[0m \
                          gn:{gn:>4}  resn:{resonance:>4.2}  pwr:{power:.2}  energy:{energy:+.2}  [{bar}]\n");
                 }
             }

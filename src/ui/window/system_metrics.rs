@@ -1,52 +1,73 @@
 {
-if self.theme.provider().collapsible_header(ui, "SYSTEM METRICS", self.show_metrics) {
+if crate::ui::widgets::collapsible_header(self.theme.provider(), ui, "SYSTEM METRICS", self.show_metrics) {
     self.show_metrics = !self.show_metrics;
 }
 
 if self.show_metrics {
     ui.add_space(GAP_XS);
-    ui.style_mut().spacing.item_spacing.y = 0.0;
-    
+
     let info = self.adapter.get_info();
-    let dim = if matches!(self.theme, Theme::Rect) {
-        egui::Color32::from_rgb(0, 230, 65) /* TERM_GREEN */
-    } else if matches!(self.theme, Theme::Future) {
-        egui::Color32::from_rgb(192, 202, 222) /* FUTURE TEXT */
-    } else {
-        egui::Color32::from_rgb(100, 100, 105)
-    };
+    let dim = self.theme.provider().palette().panel_text_color;
+    let sz = 10.5_f32;
+    let font = egui::FontId::monospace(sz);
+    let avail_w = ui.available_width();
 
-    let wrap_w = ui.available_width() - 40.0;
-    let gpu_galley = ui.painter().layout(info.name.clone(), egui::FontId::monospace(11.0), dim, wrap_w);
-    // The horizontal layouts enforce `interact_size.y` due to alignment!
-    let base_h = ui.spacing().interact_size.y.max(
-        ui.painter().layout("A".to_string(), egui::FontId::monospace(11.0), dim, wrap_w).size().y
+    let gap = 2.5_f32;
+    let line_h = ui.painter()
+        .layout("A".to_string(), font.clone(), dim, avail_w)
+        .size().y;
+    let row_h = line_h + gap;
+
+    // Deduplicate temps by first word, drop NAND
+    let mut temp_map: std::collections::BTreeMap<String, f32> = std::collections::BTreeMap::new();
+    for (label, temp) in &self.sys_temps {
+        let first = label.split_whitespace().next().unwrap_or(label);
+        if first.eq_ignore_ascii_case("NAND") { continue; }
+        let abbr = first[..first.len().min(4)].to_string();
+        temp_map.entry(abbr).and_modify(|t| *t = t.max(*temp)).or_insert(*temp);
+    }
+
+    let fixed_rows = 4usize; // GPU, API, CPU, FPS
+    let temp_rows = temp_map.len();
+    let total_rows = fixed_rows + temp_rows;
+    let _content_h = row_h * total_rows as f32 + 8.0;
+    let theme_picker_h = ui.spacing().interact_size.y + GAP_SM * 4.0;
+    let max_h = (ui.available_height() - theme_picker_h).max(row_h * 3.0);
+    let box_h = max_h;
+
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(avail_w, box_h),
+        egui::Sense::hover(),
     );
-    let row_h = gpu_galley.size().y.max(base_h);
-    let total_h = row_h + (base_h * 3.0) + (3.0 * 3.0) + 8.0; // 8.0 padding total
+    self.theme.provider().draw_sunken(ui.painter(), rect);
 
-    let (metrics_rect, _) = ui.allocate_exact_size(
-        egui::vec2(ui.available_width(), total_h),
-        egui::Sense::hover()
+    let mut child = ui.new_child(
+        egui::UiBuilder::new().max_rect(rect.shrink(4.0)).layout(*ui.layout())
     );
-    self.theme.provider().draw_sunken(ui.painter(), metrics_rect);
+    child.style_mut().spacing.item_spacing = egui::vec2(4.0, gap);
 
-    let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(metrics_rect.shrink(4.0)).layout(*ui.layout()));
-    child_ui.style_mut().spacing.item_spacing = egui::vec2(4.0, 3.0);
-
-    let rows: &[(&str, egui::RichText)] = &[
-        ("GPU",   egui::RichText::new(info.name.clone()).monospace().size(11.0)),
-        ("API",   egui::RichText::new(format!("{:?}", info.backend)).monospace().size(11.0)),
-        ("CPU",   egui::RichText::new(std::env::consts::ARCH).monospace().size(11.0)),
-        ("Frame", egui::RichText::new(format!("{:.1} ms", if self.fps > 0.0 { 1000.0 / self.fps } else { 0.0 })).monospace().size(11.0)),
-    ];
-    for (label, val) in rows {
-        child_ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(*label).monospace().size(11.0).color(dim));
+    let show_row = |ui: &mut egui::Ui, label: &str, val: String| {
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(label).monospace().size(sz).color(dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.label(val.clone());
+                ui.label(egui::RichText::new(val).monospace().size(sz));
             });
         });
-    }
+    };
+
+    egui::ScrollArea::vertical()
+        .id_salt("sys_metrics_scroll")
+        .max_height(box_h - 8.0)
+        .show(&mut child, |ui| {
+            ui.style_mut().spacing.item_spacing = egui::vec2(4.0, gap);
+            ui.style_mut().spacing.interact_size.y = row_h;
+            show_row(ui, "GPU", info.name.clone());
+            show_row(ui, "API", format!("{:?}", info.backend));
+            show_row(ui, "CPU", std::env::consts::ARCH.to_string());
+            show_row(ui, "FPS", format!("{:.1}", self.fps));
+            for (abbr, temp) in &temp_map {
+                show_row(ui, abbr, format!("{:.0}°", temp));
+            }
+        });
 }
 }

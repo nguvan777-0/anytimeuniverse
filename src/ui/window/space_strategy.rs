@@ -1,5 +1,5 @@
 {
-if self.theme.provider().collapsible_header(ui, "SPACE STRATEGY", self.show_strategy) {
+if crate::ui::widgets::collapsible_header(self.theme.provider(), ui, "SPACE STRATEGY", self.show_strategy) {
     self.show_strategy = !self.show_strategy;
 }
 
@@ -24,6 +24,6 @@ if self.show_strategy {
     self.theme.provider().draw_space_strategy_bg(ui, rect);
 
     // Draw the parameter space plot
-    self.strategy_engine.draw(ui, rect, &response, &self.wave_colors, self.theme.provider().chart_axis_color(), self.theme.provider());
+    self.strategy_engine.draw(ui, rect, &response, &self.wave_colors, self.theme.provider().palette().chart_axis_color, self.theme.provider());
 }
 }

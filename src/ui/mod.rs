@@ -36,3 +36,4 @@ mod window;
 pub use window::run;
 pub mod theme;
 pub mod widgets;
+pub mod metallic;

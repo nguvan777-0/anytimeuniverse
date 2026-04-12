@@ -1,5 +1,105 @@
 use egui::{Response, Ui};
 use crate::ui::theme::ThemeProvider;
+
+/// Maintains the selection cache for a text field's right-click context menu.
+///
+/// Call this AFTER `child.add(text_edit)` using the real `te_resp.id`.
+///
+/// Logic:
+/// - Left-click on rect: clear cache (user repositioned cursor, no selection).
+/// - Right-click on rect: freeze cache (preserve whatever selection was cached).
+/// - Otherwise, if a non-empty selection exists this frame: update cache.
+///
+/// This avoids any ID-matching gymnastics and runs entirely on `te_resp.id`.
+pub fn maintain_text_selection_cache(
+    ctx: &egui::Context,
+    te_resp: &Response,
+    text: &str,
+    rect: egui::Rect,
+) {
+    let cached_id = te_resp.id.with("_ctx_sel");
+    
+    let primary_interacted = te_resp.drag_started() || te_resp.clicked();
+    let secondary_pressed = ctx.input(|i| {
+        i.pointer.button_pressed(egui::PointerButton::Secondary)
+            && i.pointer.interact_pos().is_some_and(|p| rect.contains(p))
+    });
+
+    if secondary_pressed {
+        // Egui's TextEdit natively drops the selection mask on right-click. 
+        // We forcefully restore it immediately so the highlight doesn't visually disappear!
+        let (_, lo, hi) = ctx.data(|d| d.get_temp::<(String, usize, usize)>(cached_id).unwrap_or_default());
+        if lo != hi
+             && let Some(mut state) = egui::TextEdit::load_state(ctx, te_resp.id) {
+                 state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+                     egui::text::CCursor::new(lo),
+                     egui::text::CCursor::new(hi),
+                 )));
+                 egui::TextEdit::store_state(ctx, te_resp.id, state);
+             }
+    } else if primary_interacted {
+        ctx.data_mut(|d| d.insert_temp(cached_id, (String::new(), 0usize, 0usize)));
+    } else {
+        if let Some(range) = egui::TextEdit::load_state(ctx, te_resp.id)
+            .and_then(|s| s.cursor.char_range())
+        {
+            let lo = range.primary.index.min(range.secondary.index);
+            let hi = range.primary.index.max(range.secondary.index);
+            if lo != hi {
+                let sel: String = text.chars().skip(lo).take(hi - lo).collect();
+                ctx.data_mut(|d| d.insert_temp(cached_id, (sel, lo, hi)));
+            } else {
+                ctx.data_mut(|d| d.insert_temp(cached_id, (String::new(), 0usize, 0usize)));
+            }
+        }
+    }
+}
+
+/// Attaches a right-click context menu (Copy / Cut) to a text field.
+///
+/// Call `maintain_text_selection_cache` on the same `te_resp` every frame before
+/// calling this, so the menu always has a fresh snapshot to read.
+pub fn text_field_context_menu(theme: &dyn crate::ui::theme::ThemeProvider, te_resp: &Response, te_id: egui::Id, text: &mut String) -> bool {
+    let cached_id = te_id.with("_ctx_sel");
+    let mut text_changed = false;
+    te_resp.context_menu(|ui| {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        theme.edit_popup_visuals(ui.visuals_mut());
+        theme.edit_popup_spacing(ui.spacing_mut());
+        
+        let (selected, lo, hi) = ui.ctx().data(|d| {
+            d.get_temp::<(String, usize, usize)>(cached_id).unwrap_or_default()
+        });
+        let has_sel = !selected.is_empty();
+        let sp = if theme.palette().is_terminal_style { " " } else { "  " };
+
+        if ui.add_enabled(has_sel, egui::Button::new(format!("📋{sp}Copy"))).clicked() {
+            ui.ctx().copy_text(selected.clone());
+            ui.close();
+        }
+        if ui.add_enabled(has_sel, egui::Button::new(format!("✂{sp}Cut"))).clicked() {
+            ui.ctx().copy_text(selected);
+            if lo != hi {
+                let mut chars: Vec<char> = text.chars().collect();
+                chars.drain(lo..hi);
+                *text = chars.into_iter().collect();
+                if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), te_id) {
+                    let c = egui::text::CCursor::new(lo);
+                    state.cursor.set_char_range(Some(egui::text::CCursorRange::two(c, c)));
+                    state.store(ui.ctx(), te_id);
+                }
+                text_changed = true;
+            }
+            ui.close();
+        }
+        if ui.button(format!("📥{sp}Paste")).clicked() {
+            ui.memory_mut(|mem| mem.request_focus(te_id));
+            ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+            ui.close();
+        }
+    });
+    text_changed
+}
 const SLIDER_MARGIN: f32 = 6.0;
 
 /// Shared widget layout for collapsible section headers across all themes.
@@ -244,18 +344,27 @@ pub fn slider_fill_f32(
 
 #[allow(dead_code)]
 pub fn button(theme: &dyn ThemeProvider, ui: &mut Ui, text: &str) -> Response {
-    button_w(theme, ui, text, 0.0)
+    button_w(theme, ui, text, 0.0, false).0
 }
 
-pub fn button_w(theme: &dyn ThemeProvider, ui: &mut Ui, text: &str, min_w: f32) -> Response {
-    let padding = ui.spacing().button_padding;
-    let galley = ui.painter().layout_no_wrap(
+pub fn button_w(theme: &dyn ThemeProvider, ui: &mut Ui, text: &str, min_w: f32, force_pressed: bool) -> (Response, f32) {
+    let job = egui::text::LayoutJob::simple(
         text.to_string(),
         egui::FontId::monospace(13.0),
         theme.button_text_color(),
+        10000.0,
     );
+    button_job(theme, ui, job, min_w, force_pressed)
+}
+
+pub fn button_job(theme: &dyn ThemeProvider, ui: &mut Ui, job: egui::text::LayoutJob, min_w: f32, force_pressed: bool) -> (Response, f32) {
+    let padding = ui.spacing().button_padding;
+    let galley = ui.painter().layout_job(job);
     let w = (galley.size().x + padding.x * 2.0).max(min_w);
-    let h = galley.size().y + padding.y * 2.0;
+    
+    // Lock the button height to the standard 13.0 monospace height so large text formatting doesn't warp the button grid
+    let std_galley = ui.painter().layout_no_wrap("A".to_string(), egui::FontId::monospace(13.0), theme.button_text_color());
+    let h = std_galley.size().y + padding.y * 2.0;
 
     let (rect, mut response) = ui.allocate_exact_size(egui::vec2(w, h), egui::Sense::click());
 
@@ -263,10 +372,12 @@ pub fn button_w(theme: &dyn ThemeProvider, ui: &mut Ui, text: &str, min_w: f32) 
         response.mark_changed();
     }
 
+    let mut ret_shift = 0.0;
     if ui.is_rect_visible(rect) {
-        let is_down = response.is_pointer_button_down_on();
+        let is_down = response.is_pointer_button_down_on() || force_pressed;
         let is_hovered = response.hovered();
         let shift_y = theme.paint_button(ui, rect, is_down, is_hovered);
+        ret_shift = shift_y;
         
         let galley_pos = egui::pos2(
             rect.center().x - galley.size().x * 0.5,
@@ -275,6 +386,7 @@ pub fn button_w(theme: &dyn ThemeProvider, ui: &mut Ui, text: &str, min_w: f32) 
         ui.painter().galley(galley_pos, galley, theme.button_text_color());
     }
     
-    response
+    (response, ret_shift)
 
 }
+
